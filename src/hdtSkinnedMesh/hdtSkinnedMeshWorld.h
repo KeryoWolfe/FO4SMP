@@ -7,6 +7,9 @@
 
 namespace hdt
 {
+	// A time step at or below this value tells systems and bones to reset to the animated pose.
+	constexpr float RESET_PHYSICS = -10.0f;
+
 	class SkinnedMeshWorld : protected btDiscreteDynamicsWorldMt
 	{
 	public:

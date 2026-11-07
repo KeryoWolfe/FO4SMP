@@ -2,6 +2,7 @@
 
 #include "NetImmerseUtils.h"
 #include "XmlReader.h"
+#include "hdtDefaultBBPList.h"
 
 namespace hdt
 {
@@ -32,59 +33,9 @@ namespace hdt
 	{
 		auto path = "SKSE/Plugins/hdtSkinnedMeshConfigs/defaultBBPs.xml";
 
-		auto loaded = readAllFile(path);
-		if (loaded.empty())
-			return;
-
-		XMLReader reader((uint8_t*)loaded.data(), loaded.size());
-
-		reader.nextStartElement();
-		if (reader.GetName() != "default-bbps")
-			return;
-
-		while (reader.Inspect()) {
-			if (reader.GetInspected() == Xml::Inspected::StartTag) {
-				if (reader.GetName() == "map") {
-					try {
-						auto shape = reader.getAttribute("shape");
-						auto file = reader.getAttribute("file");
-						bbpFileList.insert(std::make_pair(shape, file));
-					} catch (...) {
-						logger::warn("defaultBBP({},{}) : invalid map", reader.GetRow(), reader.GetColumn());
-					}
-					reader.skipCurrentElement();
-				} else if (reader.GetName() == "remap") {
-					auto target = reader.getAttribute("target");
-					Remap remap = { target, {}, {} };
-					while (reader.Inspect()) {
-						if (reader.GetInspected() == Xml::Inspected::StartTag) {
-							if (reader.GetName() == "source") {
-								int priority = 0;
-								try {
-									priority = reader.getAttributeAsInt("priority");
-								} catch (...) {}
-								auto source = reader.readText();
-								remap.entries.insert({ priority, source });
-							} else if (reader.GetName() == "requires") {
-								auto req = reader.readText();
-								remap.required.insert(req);
-							} else {
-								logger::warn("defaultBBP({},{}) : unknown element", reader.GetRow(), reader.GetColumn());
-								reader.skipCurrentElement();
-							}
-						} else if (reader.GetInspected() == Xml::Inspected::EndTag) {
-							break;
-						}
-					}
-					remaps.push_back(remap);
-				} else {
-					logger::warn("defaultBBP({},{}) : unknown element", reader.GetRow(), reader.GetColumn());
-					reader.skipCurrentElement();
-				}
-			} else if (reader.GetInspected() == Xml::Inspected::EndTag) {
-				break;
-			}
-		}
+		auto list = parseDefaultBBPs(readAllFile(path));
+		bbpFileList = std::move(list.files);
+		remaps = std::move(list.remaps);
 	}
 
 	DefaultBBP::PhysicsFile_t DefaultBBP::scanDefaultBBP(RE::NiNode* armor)

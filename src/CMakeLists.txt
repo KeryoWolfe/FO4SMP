@@ -76,6 +76,8 @@ set(SOURCE_FILES
 	"${SOURCE_DIR}/hdtPhysicsProfiler.h"
 	"${SOURCE_DIR}/hdtDefaultBBP.cpp"
 	"${SOURCE_DIR}/hdtDefaultBBP.h"
+	"${SOURCE_DIR}/hdtDefaultBBPList.cpp"
+	"${SOURCE_DIR}/hdtDefaultBBPList.h"
 	"${SOURCE_DIR}/hdtSkyrimBody.cpp"
 	"${SOURCE_DIR}/hdtSkyrimBody.h"
 	"${SOURCE_DIR}/hdtSkyrimBone.cpp"

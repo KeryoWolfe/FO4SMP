@@ -1,20 +1,26 @@
 // FO4SMP: Faster HDT-SMP for Fallout 4. GPL-3 with the modding exceptions (see ../../LICENSE, ../../EXCEPTIONS).
 //
-// Milestone 1: load on 1.11.240, log, check the addresses the hooks will use,
-// find the config folder, and warn if FO4 Faster HDT-SMP is loaded too.
-// No hooks are installed and no physics runs yet.
+// Milestone 1: on 1.11.240 the plugin loads, logs, checks the addresses later milestones hook,
+// links FSMP's physics core and creates its world, reads configs.json and defaultBBPs.xml,
+// steps the empty world once, and reports its version in the console. No hooks are installed:
+// nothing is attached to actors and physics doesn't run per frame yet.
 
 #include "AddressCheck.h"
+#include "Config.h"
+#include "Console.h"
+#include "PhysicsWorld.h"
 
 namespace
 {
-	constexpr auto kConfigFolder = "Data/F4SE/Plugins/FO4SMP"sv;
-
 	// Other SMP plugins this one must not run alongside.
 	constexpr std::array kOtherSMP{
 		L"FO4FasterHdtSMP-AVX2.dll"sv,
 		L"FO4FasterHdtSMP.dll"sv,
 	};
+
+	bool g_addressesOK = false;
+	bool g_worldOK = false;
+	bool g_reportedInConsole = false;
 
 	void InitLog()
 	{
@@ -45,17 +51,45 @@ namespace
 		}
 	}
 
-	void CheckConfigFolder()
+	// Creates the physics world, applies configs.json, reads defaultBBPs.xml and steps the empty world once.
+	void StartPhysics()
 	{
-		const std::filesystem::path folder{ kConfigFolder };
-		std::error_code ec;
-		if (!std::filesystem::is_directory(folder, ec)) {
-			logger::warn("Config folder {} not found (the physics configs will live there)", kConfigFolder);
+		const auto config = FO4SMP::Config::Load();
+		FO4SMP::Config::Log(config);
+		// logLevel isn't applied in milestone 1: the shipped value (0, fatal only) would hide this test's own lines.
+
+		(void)FO4SMP::Config::LoadDefaultBBPs();
+
+		try {
+			auto* world = FO4SMP::PhysicsWorld::Get();
+			world->Apply(config);
+			logger::info("Physics world created: {} solver iterations, erp {}, time tick {:.4f} s ({} fps), up to {} substeps, wind {}",
+				world->NumIterations(), world->Erp(), world->TimeTick(), config.minFps, world->MaxSubSteps(), world->m_enableWind ? "on" : "off");
+
+			const double ms = world->SmokeStep();
+			logger::info("Physics world: one empty step took {:.3f} ms", ms);
+			g_worldOK = true;
+		} catch (const std::exception& e) {
+			logger::critical("Physics world could not start: {}", e.what());
+		} catch (...) {
+			logger::critical("Physics world could not start (unknown exception)");
+		}
+	}
+
+	void ReportInConsole()
+	{
+		if (g_reportedInConsole) {
 			return;
 		}
-		for (const auto file : { "configs.xml"sv, "defaultBBPs.xml"sv }) {
-			const auto path = folder / file;
-			logger::info("Config: {} {}", path.generic_string(), std::filesystem::exists(path, ec) ? "found" : "missing");
+		const auto line = std::format("{} {}: {}, physics core {}. No physics on actors yet (milestone 1).",
+			Version::PROJECT, Version::NAME,
+			g_addressesOK ? "addresses OK" : "ADDRESS CHECK FAILED (see FO4SMP.log)",
+			g_worldOK ? "running" : "FAILED (see FO4SMP.log)");
+		if (FO4SMP::Console::Print(line)) {
+			g_reportedInConsole = true;
+			logger::info("Console: printed \"{}\"", line);
+		} else {
+			logger::warn("Console: not available yet");
 		}
 	}
 
@@ -67,7 +101,11 @@ namespace
 			break;
 		case F4SE::MessagingInterface::kGameDataReady:
 			logger::info("Game data ready");
-			CheckConfigFolder();
+			StartPhysics();
+			break;
+		case F4SE::MessagingInterface::kPostLoadGame:
+		case F4SE::MessagingInterface::kNewGame:
+			ReportInConsole();
 			break;
 		default:
 			break;
@@ -99,11 +137,11 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 		return false;
 	}
 
-	if (!FO4SMP::AddressCheck::Run()) {
-		logger::error("Address check failed; FO4SMP will not install any hooks on this runtime.");
-		// Still loaded: milestone 1 installs none. Later milestones return false here.
-	} else {
+	g_addressesOK = FO4SMP::AddressCheck::Run();
+	if (g_addressesOK) {
 		logger::info("Address check passed");
+	} else {
+		logger::error("Address check failed; later milestones won't install hooks on this runtime.");
 	}
 
 	const auto messaging = F4SE::GetMessagingInterface();

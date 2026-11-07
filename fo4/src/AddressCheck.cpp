@@ -91,7 +91,13 @@ namespace FO4SMP::AddressCheck
 			all &= Report("TESNPC::GetFaceGeomPath", Offsets::TESNPC_GetFaceGeomPath, fn, ok, "code starts as expected");
 		}
 
-		// 4. The function table: each ID must resolve and its code start with the bytes seen in 1.11.240.
+		// 4. The console log's singleton pointer: the ID must resolve (the pointer itself is set later, when the console exists).
+		{
+			const auto address = Resolve(Offsets::ConsoleLog_Singleton);
+			all &= Report("ConsoleLog singleton"sv, Offsets::ConsoleLog_Singleton, address, address != 0, "resolves (data)"sv);
+		}
+
+		// 5. The function table: each ID must resolve and its code start with the bytes seen in 1.11.240.
 		for (const auto& fn : Offsets::kFunctions) {
 			const REL::ID id{ fn.id };
 			const auto address = Resolve(id);

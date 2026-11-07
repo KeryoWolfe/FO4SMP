@@ -7,7 +7,6 @@
 
 namespace hdt
 {
-	constexpr float RESET_PHYSICS = -10.0f;
 
 	class SkyrimPhysicsWorld :
 		protected SkinnedMeshWorld,

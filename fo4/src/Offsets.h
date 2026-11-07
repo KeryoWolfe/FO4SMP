@@ -32,6 +32,11 @@ namespace FO4SMP::Offsets
 	// version; same size (0xB8) and same code in both.
 	inline constexpr REL::ID TESNPC_GetFaceGeomPath{ 2207453 };
 
+	// The console log's singleton pointer (data). CommonLibF4 names next-gen ID 2690148 for it, which
+	// Address Library 1.11.240 doesn't have; 4797437 is the pointer the game loads into rcx before
+	// 976 calls to ConsoleLog::Print / AddString (ADDRESSES.md).
+	inline constexpr REL::ID ConsoleLog_Singleton{ 4797437 };
+
 	struct Function
 	{
 		std::string_view              name;
@@ -64,6 +69,7 @@ namespace FO4SMP::Offsets
 		Function{ "Reset3D"sv, 2229913, 302888, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C }, true },
 		Function{ "TESNPCGetAlternateHeadPartList"sv, 2207501, 437572, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83 }, true },
 		Function{ "TESNPCGetAlternateHeadPartListSize"sv, 2207502, 517331, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83 }, true },
+		Function{ "ConsoleLogPrint"sv, 2248591, 799546, { 0x48, 0x89, 0x54, 0x24, 0x10, 0x4C, 0x89, 0x44 }, true },
 		Function{ "TESObjectREFRFixDisplayedHeadParts"sv, 2200988, 789414, { 0x40, 0x53, 0x55, 0x56, 0x41, 0x54, 0x48, 0x83 }, true },
 	};
 }

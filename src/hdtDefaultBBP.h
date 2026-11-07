@@ -1,21 +1,17 @@
 #pragma once
 
+#include "hdtDefaultBBPList.h"
+
 namespace hdt
 {
 	class DefaultBBP
 	{
 	public:
-		using RemapEntry_t = std::pair<int, std::string>;
+		using RemapEntry_t = DefaultBBPList::RemapEntry_t;
 		using NameSet_t = std::unordered_set<std::string>;
 		using NameMap_t = std::unordered_map<std::string, NameSet_t>;
 		using PhysicsFile_t = std::pair<std::string, NameMap_t>;
-
-		struct Remap
-		{
-			std::string name;
-			std::set<RemapEntry_t> entries;
-			std::unordered_set<std::string> required;
-		};
+		using Remap = DefaultBBPList::Remap;
 
 		static DefaultBBP* instance();
 		PhysicsFile_t scanBBP(RE::NiNode* scan);

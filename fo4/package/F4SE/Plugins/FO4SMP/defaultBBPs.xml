@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FO4SMP default physics: a physics XML for meshes that don't name their own
+  (meshes that do carry a NiStringExtraData "HDT Skinned Mesh Physics Object").
+
+  Format, as FSMP's:
+    <map shape="ShapeName" file="path/to/physics.xml"/>
+      the shape name in the mesh -> a physics XML, relative to Data or to this folder
+    <remap target="Name"><source priority="1">OtherName</source><requires>Needed</requires></remap>
+      treat OtherName as Name before looking the map up
+
+  Empty on purpose for milestone 1: the shape names of Fallout 4's bodies are filled in
+  once physics attaches to actors.
+-->
+<default-bbps>
+</default-bbps>

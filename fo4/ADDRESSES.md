@@ -50,6 +50,15 @@ For each: the 1.10.163 ID resolves to a function start in the GOG 1.10.163 exe a
 
 Why the earlier search for armor attach failed: in 1.11.240 the function no longer starts with the 1.10.163 prologue and its `add rcx, 0x1E50` is gone, so neither signature found it. `0x035C300`, which shares that `add`, is a different function.
 
+## Console
+
+| What | ID (1.11.240) | 1.11.240 | How it was found |
+|---|---|---|---|
+| `ConsoleLog` singleton (data) | 4797437 | `0x30F83B8` | CommonLibF4's next-gen ID for it, 2690148, is **not in Address Library 1.11.240**. 976 calls to `ConsoleLog::Print` (2248591) and `AddString` (2248593) load `rcx` from this one pointer just before the call. |
+| `ConsoleLog::Print` | 2248591 | `0x103C0C0` | CommonLibF4's ID; present in 1.11.240. |
+
+**CommonLibF4 and 1.11.240:** of the 2,720 next-gen IDs CommonLibF4 (`4379567`) names, **305 are missing** from Address Library's 1.11.240 database. Any CommonLibF4 function used here has to be checked first; a missing ID throws when first used. (This may apply to 4Stim too, which uses CommonLibF4.)
+
 ## Gone in 1.11.240
 
 | What | 1.10.163 | Finding |
