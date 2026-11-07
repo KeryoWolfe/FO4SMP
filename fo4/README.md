@@ -19,7 +19,7 @@ On 1.11.240 only, the plugin:
 
 ## Build
 
-Requirements: Visual Studio 2022 (C++ desktop workload, MSVC 14.44, which FSMP's triplets pin), CMake 3.25+, Ninja, vcpkg with `VCPKG_ROOT` set.
+Requirements: Visual Studio 2022 or 2026 (C++ desktop workload, which brings CMake and Ninja), vcpkg with `VCPKG_ROOT` set (Visual Studio's bundled vcpkg works). Dependencies are built with the newest MSVC installed (`cmake/triplets`; FSMP's own triplets pin 14.44, which VS 2026 doesn't have), so build from that Visual Studio's x64 Native Tools prompt.
 
 ```
 git submodule update --init extern/CommonLibF4
@@ -28,7 +28,7 @@ cmake --preset release -DFO4SMP_DEPLOY_DIR="D:/Naked Commonwealth/mods/FO4SMP"
 cmake --build --preset release
 ```
 
-Run from an "x64 Native Tools Command Prompt for VS 2022". The first configure builds FSMP's patched Bullet and oneTBB through vcpkg (several minutes). With `FO4SMP_DEPLOY_DIR` set, each build copies `F4SE\Plugins\FO4SMP.dll`, its PDB and `F4SE\Plugins\FO4SMP\configs.json` / `defaultBBPs.xml` into that folder; without it the DLL is `fo4/build/release/FO4SMP.dll` and the config files are in `fo4/package/`.
+Run from the "x64 Native Tools Command Prompt" of the newest Visual Studio installed. The first configure builds FSMP's patched Bullet and oneTBB through vcpkg (several minutes). With `FO4SMP_DEPLOY_DIR` set, each build copies `F4SE\Plugins\FO4SMP.dll`, its PDB and `F4SE\Plugins\FO4SMP\configs.json` / `defaultBBPs.xml` into that folder; without it the DLL is `fo4/build/release/FO4SMP.dll` and the config files are in `fo4/package/`.
 
 ## Test (milestone 1)
 
