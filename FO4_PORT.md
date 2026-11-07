@@ -62,6 +62,13 @@ Checked in CommonLibF4 at `4379567`: `BSSkin::Instance` (forward declaration onl
 4. **Head parts.** Fallout 4's face generation differs; hair SMP may need its own path.
 5. **Performance.** Fallout 4's frame budget and Havok threads differ; the physics thread pool size and timing need measuring in game.
 
+## Progress (7 November 2026)
+
+- **Addresses:** three verified in 1.11.240 (BSFaceGenNiNode's vtable, `SkinAllGeometry`, `TESNPC::GetFaceGeomPath`); `SkinSingleGeometry` found to be inlined away; armor attach, game loop and shutdown unresolved. Details: `fo4/ADDRESSES.md`.
+- **Milestone 1 written, not built:** `fo4/` (CMake, vcpkg, CommonLibF4 submodule at `4379567`). Loads on 1.11.240, logs, checks the verified addresses in game, warns if FO4 Faster HDT-SMP is loaded. Build and test steps: `fo4/README.md`.
+- **Physics core not linked yet:** `hdtSkinnedMeshWorld.cpp` includes `hdtSkyrimPhysicsWorld.h` and `hdtSkyrimSystem.h`, and `config.cpp` reaches into `ActorManager` and `Hooks`. Those ties have to be cut (or the game layer ported) before the core links in milestone 1b.
+- **Bingle's download** (in the owner's MO2 mods folder) has the DLLs, PDBs, configs and `DynamicHDT.psc`, but no C++ source: the source has to be requested.
+
 ## Proposed milestones
 
 1. **Loads.** F4SE plugin with the reusable core linked: logs, reads `configs.xml` and the default physics XML, reports its version in the console. No hooks.
