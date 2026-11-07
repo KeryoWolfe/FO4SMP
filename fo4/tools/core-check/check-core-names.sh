@@ -5,7 +5,9 @@
 # usage: check-core-names.sh <bullet3 source dir with FSMP's patches applied>
 set -uo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; src="$here/../../../src"; bullet="${1:?path to bullet3}"
-noise='__m128|must have at least one parameter of class|no viable overloaded|no viable conversion|invalid operands|cannot initialize|no matching (function|constructor)|m128_f32|vector of|misplaced attributes'
+# Only errors that name the SIMD types themselves count as noise: a broader filter ("invalid operands",
+# "no matching function") once hid a real missing operator== that MSVC then reported.
+noise='__m128|m128|vector of|must have at least one parameter of class|misplaced attributes'
 left=0
 for f in "$src"/hdtSkinnedMesh/*.cpp "$src"/XmlReader.cpp "$src"/hdtDefaultBBPList.cpp; do
 	out=$(clang++ -std=c++23 -fsyntax-only -ferror-limit=0 -msse4.1 -mavx2 -mfma -Wno-everything -DBT_USE_SSE -DBT_USE_SSE_IN_API \

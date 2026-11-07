@@ -47,6 +47,23 @@ using BYTE = unsigned char;
 #	define ZeroMemory(a_dst, a_len) std::memset((a_dst), 0, (a_len))
 #endif
 
+namespace RE
+{
+	// From FSMP's PCH: compare a smart pointer with a raw one (the core finds systems in a
+	// vector<BSTSmartPointer> by raw pointer). CommonLibF4 only compares two smart pointers.
+	template <class T1, class T2, template <class> class R>
+	[[nodiscard]] constexpr bool operator==(const BSTSmartPointer<T1, R>& a_lhs, T2* a_rhs)
+	{
+		return a_lhs.get() == a_rhs;
+	}
+
+	template <class T1, class T2, template <class> class R>
+	[[nodiscard]] constexpr bool operator!=(const BSTSmartPointer<T1, R>& a_lhs, T2* a_rhs)
+	{
+		return !(a_lhs.get() == a_rhs);
+	}
+}
+
 namespace hdt
 {
 	// FSMP's wrapper (from its PCH): adopt a raw pointer into a BSTSmartPointer.
