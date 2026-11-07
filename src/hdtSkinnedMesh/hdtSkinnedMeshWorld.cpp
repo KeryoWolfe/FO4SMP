@@ -2,8 +2,6 @@
 #include "hdtBoneScaleConstraint.h"
 #include "hdtDispatcher.h"
 #include "hdtSkinnedMeshAlgorithm.h"
-#include "hdtSkyrimPhysicsWorld.h"
-#include "hdtSkyrimSystem.h"
 #include <algorithm>
 #include <cmath>
 #include <thread>
@@ -150,7 +148,7 @@ namespace hdt
 	int SkinnedMeshWorld::stepSimulation(btScalar remainingTimeStep, int, btScalar fixedTimeStep)
 	{
 		applyGravity();
-		if (hdt::SkyrimPhysicsWorld::get()->m_enableWind)
+		if (m_enableWind)
 			applyWind(remainingTimeStep);
 
 		while (remainingTimeStep > fixedTimeStep) {
@@ -258,7 +256,7 @@ namespace hdt
 		const btScalar gustSpeed = clampScalar(windMagnitude * kGustSpeedPerForce, kMinGustSpeed, kMaxGustSpeed);
 
 		for (auto& i : m_systems) {
-			auto system = static_cast<SkyrimSystem*>(i.get());
+			auto system = i.get();
 			if (btFuzzyZero(system->m_windFactor))  // skip any systems that aren't affected by wind
 				continue;
 			for (auto& j : i->m_bones) {

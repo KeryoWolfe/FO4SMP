@@ -64,10 +64,11 @@ Checked in CommonLibF4 at `4379567`: `BSSkin::Instance` (forward declaration onl
 
 ## Progress (7 November 2026)
 
-- **Addresses:** three verified in 1.11.240 (BSFaceGenNiNode's vtable, `SkinAllGeometry`, `TESNPC::GetFaceGeomPath`); `SkinSingleGeometry` found to be inlined away; armor attach, game loop and shutdown unresolved. Details: `fo4/ADDRESSES.md`.
-- **Milestone 1 written, not built:** `fo4/` (CMake, vcpkg, CommonLibF4 submodule at `4379567`). Loads on 1.11.240, logs, checks the verified addresses in game, warns if FO4 Faster HDT-SMP is loaded. Build and test steps: `fo4/README.md`.
-- **Physics core not linked yet:** `hdtSkinnedMeshWorld.cpp` includes `hdtSkyrimPhysicsWorld.h` and `hdtSkyrimSystem.h`, and `config.cpp` reaches into `ActorManager` and `Hooks`. Those ties have to be cut (or the game layer ported) before the core links in milestone 1b.
-- **Bingle's download** (in the owner's MO2 mods folder) has the DLLs, PDBs, configs and `DynamicHDT.psc`, but no C++ source: the source has to be requested.
+- **Addresses:** 22 verified in 1.11.240, enough for every hook FSMP needs (frame step, armor attach and detach, skinning, head parts, culling); one weak (the first/third-person switch event source). `SkinSingleGeometry` is inlined away in 1.11.240. Leads came from the 2020 port and from FO4 Faster HDT-SMP's PDB (names and ID numbers only); every one was checked in both executables. Details: `fo4/ADDRESSES.md`.
+- **Milestone 1 written, not built:** `fo4/` (CMake, vcpkg, CommonLibF4 submodule at `4379567`). Loads on 1.11.240, logs, checks all 22 addresses in game, warns if FO4 Faster HDT-SMP is loaded. Build and test steps: `fo4/README.md`.
+- **Physics core freed from the Skyrim layer:** the wind switch (`m_enableWind`) moved from `SkyrimPhysicsWorld` to `SkinnedMeshWorld`, the per-system wind factor from `SkyrimSystem` to `SkinnedMeshSystem`; the core no longer includes `hdtSkyrimPhysicsWorld.h` or `hdtSkyrimSystem.h`. The Skyrim build should be unaffected (`SkyrimPhysicsWorld` re-exposes `m_enableWind` with a `using`), but that hasn't been built either. `fo4/tools/core-check/check-core-includes.sh` shows all 13 core files preprocess with no game headers (before the change, `hdtSkinnedMeshWorld.cpp` didn't). A full off-Windows compile isn't possible: the core uses MSVC's `__m128` members and operators.
+- **To link the core in the plugin (milestone 1b),** the plugin's precompiled header needs what FSMP's provides for the core: a `std::hash` for CommonLibF4's `BSFixedString` (CommonLibF4 has none), FSMP's `hdt::make_smart`, and `logger`. `config.cpp` stays on the game side: it applies settings to `ActorManager` and the physics world.
+- **FO4 Faster HDT-SMP:** no source in its download, and the owner expects none. Its PDB and code supplied leads (function names and Address Library IDs), all verified independently. Its module list also shows how it is split (`Fo4MeshExtractor`, `Fo4SkinnedMeshSystem`, `Fo4PhysicsWorld`, `ArmorBoneReference`, `HeadPartModelSourceCache`...), a useful map of what the Fallout 4 layer needs. Its Nexus page describes it as vibe-coded.
 
 ## Proposed milestones
 

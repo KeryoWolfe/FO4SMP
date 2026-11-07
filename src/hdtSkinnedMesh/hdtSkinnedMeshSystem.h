@@ -34,6 +34,7 @@ namespace hdt
 		SkinnedMeshWorld* m_world = nullptr;
 
 		bool block_resetting = false;
+		float m_windFactor = 1.f;  // wind factor for the system (i.e., full actor/skeleton) (calculated based off obstructions)
 		std::vector<RE::BSTSmartPointer<SkinnedMeshBone>>& getBones() { return m_bones; };
 
 	protected:

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "hdtSkinnedMeshSystem.h"
-#include "hdtSkyrimSystem.h"
+#include <tbb/parallel_for.h>
 #include <BulletCollision/CollisionDispatch/btSimulationIslandManager.h>
 #include <BulletDynamics/Dynamics/btDiscreteDynamicsWorldMt.h>
 
@@ -20,6 +20,8 @@ namespace hdt
 
 		int stepSimulation(btScalar remainingTimeStep, int maxSubSteps = 1,
 			btScalar fixedTimeStep = btScalar(1.) / btScalar(60.)) override;
+
+		bool m_enableWind = true;  // the game layer sets it from the config
 
 		btVector3& getWind() { return m_windSpeed; }
 		const btVector3& getWind() const { return m_windSpeed; }

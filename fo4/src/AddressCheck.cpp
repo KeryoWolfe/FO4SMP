@@ -91,6 +91,19 @@ namespace FO4SMP::AddressCheck
 			all &= Report("TESNPC::GetFaceGeomPath", Offsets::TESNPC_GetFaceGeomPath, fn, ok, "code starts as expected");
 		}
 
+		// 4. The function table: each ID must resolve and its code start with the bytes seen in 1.11.240.
+		for (const auto& fn : Offsets::kFunctions) {
+			const REL::ID id{ fn.id };
+			const auto address = Resolve(id);
+			bool ok = false;
+			if (address != 0) {
+				const auto* code = reinterpret_cast<const std::uint8_t*>(address);
+				ok = std::equal(fn.head.begin(), fn.head.end(), code);
+			}
+			const bool passed = Report(fn.name, id, address, ok, fn.strong ? "code starts as expected"sv : "code starts as expected (weak match)"sv);
+			all &= passed;
+		}
+
 		return all;
 	}
 }

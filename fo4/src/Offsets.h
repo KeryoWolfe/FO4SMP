@@ -7,6 +7,11 @@
 // 1.11.240 executable. How each was matched, and what is still unresolved, is in
 // fo4/ADDRESSES.md. AddressCheck.cpp checks each one in game at load.
 //
+// The table at the end came from FO4 Faster HDT-SMP (Bingle, GPL-3): its PDB names
+// the game functions it uses and its code holds their Address Library IDs (1.10.163
+// and next-gen). Each was then checked independently in both executables (same
+// shape of code, same callers among the others); see fo4/ADDRESSES.md.
+//
 // None of these are hooked yet (milestone 1 only checks them).
 
 namespace FO4SMP::Offsets
@@ -26,4 +31,39 @@ namespace FO4SMP::Offsets
 	// "Meshes\Actors\Character\FaceGenData\FaceGeom\%s\%08X.NIF" in either
 	// version; same size (0xB8) and same code in both.
 	inline constexpr REL::ID TESNPC_GetFaceGeomPath{ 2207453 };
+
+	struct Function
+	{
+		std::string_view              name;
+		std::uint64_t                 id;        // Address Library, 1.11.240
+		std::uint64_t                 id_1_10;   // Address Library, 1.10.163 (reference only)
+		std::array<std::uint8_t, 8>   head;      // first bytes in 1.11.240
+		bool                          strong;    // false: matched less firmly, see ADDRESSES.md
+	};
+
+	// Game functions FSMP needs, by role:
+	//   frame step: MainOnIdle; armor and body: BipedAnim*; skinning: BSSkinInstance*, BSFlattenedBoneTree*;
+	//   head parts: BSFaceGen*, TESNPC*, TESObjectREFRFixDisplayedHeadParts; culling: ActorCalculateLOS;
+	//   collision: ActorGetCollisionFilter; resets: Reset3D, FirstThirdPersonSwitchEventSource.
+	inline constexpr std::array kFunctions{
+		Function{ "ActorCalculateLOS"sv, 2230201, 1324305, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C }, true },
+		Function{ "ActorGetCollisionFilter"sv, 2229991, 1474995, { 0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B }, true },
+		Function{ "BSFaceGenAddHeadPartOnActor"sv, 2209545, 913780, { 0x48, 0x85, 0xC9, 0x0F, 0x84, 0xB2, 0x01, 0x00 }, true },
+		Function{ "BSFaceGenModelExtraDataSetBoneName"sv, 2209387, 1278503, { 0x8B, 0xC2, 0x49, 0x8B, 0xD0, 0x48, 0x8D, 0x0C }, true },
+		Function{ "BSFaceGenPrepareHeadPart"sv, 2209534, 840416, { 0x48, 0x89, 0x4C, 0x24, 0x08, 0x55, 0x41, 0x56 }, true },
+		Function{ "BSFlattenedBoneTreeFind"sv, 2270080, 1435518, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C }, true },
+		Function{ "BSFlattenedBoneTreeGetOrCreateBoneNode"sv, 2270071, 865291, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83 }, true },
+		Function{ "BSSkinInstanceGetFlattenedBoneReference"sv, 2270469, 73083, { 0x48, 0x89, 0x5C, 0x24, 0x18, 0x55, 0x56, 0x57 }, true },
+		Function{ "BipedAnimApplySkinnedObjects"sv, 2194381, 224320, { 0x44, 0x88, 0x4C, 0x24, 0x20, 0x44, 0x89, 0x44 }, true },
+		Function{ "BipedAnimAttachSkinnedObject"sv, 2194388, 1575810, { 0x44, 0x89, 0x4C, 0x24, 0x20, 0x4C, 0x89, 0x44 }, true },
+		Function{ "BipedAnimAttachToParent"sv, 2194378, 1370428, { 0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x10, 0x4C }, true },
+		Function{ "BipedAnimRemovePart"sv, 2194342, 575576, { 0x48, 0x8B, 0xC4, 0x48, 0x89, 0x50, 0x10, 0x48 }, true },
+		Function{ "FirstThirdPersonSwitchEventSource"sv, 2233725, 930195, { 0x48, 0x83, 0xEC, 0x28, 0x65, 0x48, 0x8B, 0x04 }, false },
+		Function{ "LooksMenuUtilsShowLooksMenu"sv, 2223366, 411372, { 0x48, 0x89, 0x5C, 0x24, 0x18, 0x57, 0x48, 0x83 }, true },
+		Function{ "MainOnIdle"sv, 2228917, 633524, { 0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x08, 0x48 }, true },
+		Function{ "Reset3D"sv, 2229913, 302888, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C }, true },
+		Function{ "TESNPCGetAlternateHeadPartList"sv, 2207501, 437572, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83 }, true },
+		Function{ "TESNPCGetAlternateHeadPartListSize"sv, 2207502, 517331, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x57, 0x48, 0x83 }, true },
+		Function{ "TESObjectREFRFixDisplayedHeadParts"sv, 2200988, 789414, { 0x40, 0x53, 0x55, 0x56, 0x41, 0x54, 0x48, 0x83 }, true },
+	};
 }
