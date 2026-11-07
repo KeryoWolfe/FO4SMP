@@ -4,6 +4,7 @@
   "builtin-baseline": "60b06921c7c7ac787b23a222dfab5cdd3911712e",
   "dependencies": [
     "rsm-mmio",
+    "rapidcsv",
     "spdlog",
     {
       "name": "bullet3",
