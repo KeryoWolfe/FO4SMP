@@ -40,12 +40,26 @@ namespace FO4SMP
 		[[nodiscard]] int NumIterations() { return getSolverInfo().m_numIterations; }
 		[[nodiscard]] float Erp() { return getSolverInfo().m_erp; }
 
+		// Diagnostic: the bone pairs with the most contacts, and the deepest, since the last call ("" if none).
+		std::string TakeContactReport();
+
 	private:
 		PhysicsWorld();
 
 		btVector3 ApplyTranslationOffset();
 		void RestoreTranslationOffset(const btVector3& a_offset);
 		void UpdateActiveState();
+
+		// Counts FSMP's contacts before they are solved (they are rebuilt and cleared every substep).
+		void solveConstraints(btContactSolverInfo& a_solverInfo) override;
+
+		struct PairStats
+		{
+			std::uint64_t contacts = 0;
+			float deepest = 0.0f;
+		};
+		std::unordered_map<std::string, PairStats> _pairs;
+		std::uint64_t _substeps = 0;
 
 		float _timeTick = 1.0f / 60.0f;
 		int _maxSubSteps = 4;

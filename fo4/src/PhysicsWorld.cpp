@@ -4,6 +4,7 @@
 #include "game/Fo4ConvertNi.h"
 #include "game/Fo4Settings.h"
 #include "game/Fo4System.h"
+#include "hdtSkinnedMesh/hdtSkinnedMeshBone.h"
 
 namespace FO4SMP
 {
@@ -24,6 +25,58 @@ namespace FO4SMP
 		solver.m_restitutionVelocityThreshold = 0.2f;
 		solver.m_solverMode = SOLVER_SIMD;
 		solver.m_leastSquaresResidualThreshold = 0.0001f;
+	}
+
+	void PhysicsWorld::solveConstraints(btContactSolverInfo& a_solverInfo)
+	{
+		++_substeps;
+		auto* dispatcher = getCollisionWorld()->getDispatcher();
+		for (int i = 0; i < dispatcher->getNumManifolds(); ++i) {
+			auto* manifold = dispatcher->getManifoldByIndexInternal(i);
+			if (!manifold->getNumContacts()) {
+				continue;
+			}
+			auto name = [](const btCollisionObject* a_object) -> std::string {
+				auto* bone = a_object ? static_cast<hdt::SkinnedMeshBone*>(a_object->getUserPointer()) : nullptr;
+				return bone ? std::string{ bone->m_name.c_str() } + (a_object->isStaticOrKinematicObject() ? "(k)" : "") : "?";
+			};
+			auto a = name(manifold->getBody0()), b = name(manifold->getBody1());
+			if (b < a) {
+				std::swap(a, b);
+			}
+			auto& stats = _pairs[a + " / " + b];
+			for (int c = 0; c < manifold->getNumContacts(); ++c) {
+				++stats.contacts;
+				stats.deepest = std::min(stats.deepest, manifold->getContactPoint(c).getDistance());
+			}
+		}
+		hdt::SkinnedMeshWorld::solveConstraints(a_solverInfo);
+	}
+
+	std::string PhysicsWorld::TakeContactReport()
+	{
+		if (_pairs.empty()) {
+			_substeps = 0;
+			return {};
+		}
+		std::vector<std::pair<std::string, PairStats>> sorted(_pairs.begin(), _pairs.end());
+		std::ranges::sort(sorted, [](const auto& a, const auto& b) { return a.second.contacts > b.second.contacts; });
+		std::uint64_t total = 0;
+		for (const auto& p : sorted) {
+			total += p.second.contacts;
+		}
+		std::string report = std::format("{} contacts in {} substeps; most:", total, _substeps);
+		for (std::size_t i = 0; i < sorted.size() && i < 6; ++i) {
+			report += std::format(" {} {} (deepest {:.1f});", sorted[i].first, sorted[i].second.contacts, sorted[i].second.deepest);
+		}
+		std::ranges::sort(sorted, [](const auto& a, const auto& b) { return a.second.deepest < b.second.deepest; });
+		report += " deepest:";
+		for (std::size_t i = 0; i < sorted.size() && i < 3; ++i) {
+			report += std::format(" {} {:.1f};", sorted[i].first, sorted[i].second.deepest);
+		}
+		_pairs.clear();
+		_substeps = 0;
+		return report;
 	}
 
 	PhysicsWorld* PhysicsWorld::Get()
