@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
 	FO4SMP
-	VERSION 0.2.0
+	VERSION 0.3.0
 	LANGUAGES CXX
 )
 
@@ -30,6 +30,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../extern/CommonLibF4/CommonLibF4"
 find_package(spdlog CONFIG REQUIRED)
 find_package(Bullet CONFIG REQUIRED)  # FSMP's patched Bullet 3.25 (../cmake/ports/bullet3)
 find_package(TBB CONFIG REQUIRED)
+find_package(pugixml CONFIG REQUIRED)  # FSMP's <pattern> expander
 find_package(RapidJSON CONFIG REQUIRED)  # configs.json, through FSMP's GlobalConfig (header-only; vcpkg's include dir)
 
 configure_file(
@@ -56,6 +57,8 @@ set(FSMP_CORE
 	"${FSMP_SRC}/XmlReader.cpp"
 	"${FSMP_SRC}/GlobalConfig.cpp"
 	"${FSMP_SRC}/hdtDefaultBBPList.cpp"
+	"${FSMP_SRC}/Patterns/hdtPatternLibrary.cpp"
+	"${FSMP_SRC}/Patterns/hdtXmlPatternExpander.cpp"
 )
 
 add_library(
@@ -74,6 +77,21 @@ add_library(
 	src/PCH.h
 	src/PhysicsWorld.cpp
 	src/PhysicsWorld.h
+	src/PlayerPhysics.cpp
+	src/PlayerPhysics.h
+	src/game/Fo4Body.cpp
+	src/game/Fo4Body.h
+	src/game/Fo4Bone.cpp
+	src/game/Fo4Bone.h
+	src/game/Fo4ConvertNi.cpp
+	src/game/Fo4ConvertNi.h
+	src/game/Fo4NiUtils.h
+	src/game/Fo4Settings.cpp
+	src/game/Fo4Settings.h
+	src/game/Fo4Skin.cpp
+	src/game/Fo4Skin.h
+	src/game/Fo4System.cpp
+	src/game/Fo4System.h
 	${FSMP_CORE}
 )
 
@@ -81,6 +99,7 @@ target_include_directories(
 	"${PROJECT_NAME}"
 	PRIVATE
 		"${CMAKE_CURRENT_SOURCE_DIR}/src"
+		"${CMAKE_CURRENT_SOURCE_DIR}/src/game"
 		"${CMAKE_CURRENT_BINARY_DIR}/src"
 		"${FSMP_SRC}"
 		"${FSMP_SRC}/hdtSkinnedMesh"
@@ -97,6 +116,7 @@ target_link_libraries(
 		spdlog::spdlog
 		${BULLET_LIBRARIES}
 		TBB::tbb
+		pugixml::pugixml
 )
 
 target_precompile_headers("${PROJECT_NAME}" PRIVATE src/PCH.h)

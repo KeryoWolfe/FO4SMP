@@ -44,6 +44,11 @@ namespace FO4SMP::Offsets
 	inline constexpr std::ptrdiff_t   MainLoop_OnIdleCall = 0xCB;
 	inline constexpr REL::ID          MainOnIdle{ 2228917 };
 
+	// The player (PlayerCharacter*): F4SE's g_player for 1.11.240, 0x032DD370 (f4se/GameReferences.cpp at 6f6a7ca),
+	// which is Address Library 2698073; referenced from 3,967 places in the executable. CommonLibF4's ID for it
+	// (2690919) isn't in Address Library 1.11.240.
+	inline constexpr REL::ID PlayerCharacter_Singleton{ 2698073 };
+
 	struct Function
 	{
 		std::string_view              name;

@@ -60,7 +60,7 @@ namespace
 		FO4SMP::Config::Log(config);
 		// logLevel isn't applied in milestone 1: the shipped value (0, fatal only) would hide this test's own lines.
 
-		(void)FO4SMP::Config::LoadDefaultBBPs();
+		const auto defaults = FO4SMP::Config::LoadDefaultBBPs();
 
 		try {
 			auto* world = FO4SMP::PhysicsWorld::Get();
@@ -71,7 +71,7 @@ namespace
 			const double ms = world->SmokeStep();
 			logger::info("Physics world: one empty step took {:.3f} ms", ms);
 			g_worldOK = true;
-			FO4SMP::FrameHook::EnableStepping();
+			FO4SMP::FrameHook::EnableStepping(defaults);
 		} catch (const std::exception& e) {
 			logger::critical("Physics world could not start: {}", e.what());
 		} catch (...) {
@@ -84,7 +84,7 @@ namespace
 		if (g_reportedInConsole) {
 			return;
 		}
-		const auto line = std::format("{} {}: {}, physics core {}, frame step {}. No physics on actors yet (milestone 2).",
+		const auto line = std::format("{} {}: {}, physics core {}, frame step {}. Player physics builds a second after the 3D loads (milestone 3).",
 			Version::PROJECT, Version::NAME,
 			g_addresses.Passed() ?
 				(g_addresses.hooked ? std::format("addresses OK ({} hooked by another plugin)", g_addresses.hooked) : "addresses OK"s) :

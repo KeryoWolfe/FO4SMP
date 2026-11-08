@@ -1,5 +1,10 @@
 #pragma once
 
+namespace hdt
+{
+	struct DefaultBBPList;
+}
+
 namespace FO4SMP::FrameHook
 {
 	// Milestone 2: steps the physics world once per frame from the game's main loop.
@@ -10,8 +15,9 @@ namespace FO4SMP::FrameHook
 	// physics. Installed at plugin load; refuses if the call site isn't a call.
 	bool Install();
 
-	// Steps start once the physics world exists (game data ready).
-	void EnableStepping();
+	// Steps start once the physics world exists (game data ready). a_defaults is defaultBBPs.xml, for
+	// the player physics scan (milestone 3).
+	void EnableStepping(const hdt::DefaultBBPList& a_defaults);
 
 	[[nodiscard]] bool Installed() noexcept;
 }

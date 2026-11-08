@@ -207,6 +207,17 @@ namespace FO4SMP::AddressCheck
 			Count(result, address != 0 ? Outcome::kOK : Outcome::kFailed);
 		}
 
+		// 4b. The player pointer (data; it's set once a game is loaded).
+		{
+			const auto address = Resolve(Offsets::PlayerCharacter_Singleton);
+			if (address != 0) {
+				logger::info("Address check: PlayerCharacter singleton (ID {}) at +{:07X} OK: resolves (data)", Offsets::PlayerCharacter_Singleton.id(), address - Base());
+			} else {
+				logger::error("Address check: PlayerCharacter singleton (ID {}) FAILED: not in Address Library for this runtime", Offsets::PlayerCharacter_Singleton.id());
+			}
+			Count(result, address != 0 ? Outcome::kOK : Outcome::kFailed);
+		}
+
 		// 5. The function table: each ID must resolve and its code start with the bytes seen in 1.11.240.
 		for (const auto& fn : Offsets::kFunctions) {
 			const REL::ID id{ fn.id };

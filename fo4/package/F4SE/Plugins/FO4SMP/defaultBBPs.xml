@@ -9,8 +9,9 @@
     <remap target="Name"><source priority="1">OtherName</source><requires>Needed</requires></remap>
       treat OtherName as Name before looking the map up
 
-  Empty on purpose for milestone 1: the shape names of Fallout 4's bodies are filled in
-  once physics attaches to actors.
+  Only used when nothing on the outfit names its physics with the extra data. Example (A-Body's
+  male body, whose MaleBody.nif names Meshes\A-Body\body\MaleBody.xml in its extra data anyway):
+    <map shape="BaseMaleBody:0Full" file="Meshes\A-Body\body\MaleBody.xml"/>
 -->
 <default-bbps>
 </default-bbps>

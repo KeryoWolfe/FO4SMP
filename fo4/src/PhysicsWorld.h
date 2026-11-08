@@ -5,13 +5,14 @@
 namespace hdt
 {
 	struct GlobalConfig;
+	class Fo4System;
 }
 
 namespace FO4SMP
 {
-	// The Fallout 4 physics world: FSMP's SkinnedMeshWorld plus the settings the game layer owns.
-	// Milestone 1 creates it, applies configs.json to it and steps it once while empty; nothing is
-	// added to it and nothing steps it per frame yet.
+	// The Fallout 4 physics world: FSMP's SkinnedMeshWorld plus the per-frame logic of FSMP's
+	// SkyrimPhysicsWorld (tick averaging, substep limit, translation offset, disable tags), run on the
+	// game's main thread from the frame hook.
 	class PhysicsWorld : public hdt::SkinnedMeshWorld
 	{
 	public:
@@ -23,12 +24,16 @@ namespace FO4SMP
 		// touches SkyrimPhysicsWorld).
 		void Apply(const hdt::GlobalConfig& a_config);
 
-		// Steps the empty world through one 1/60 s frame. Returns the time it took in milliseconds.
+		// Steps the world once through 1/60 s (milestone 1's smoke test). Returns milliseconds.
 		double SmokeStep();
 
-		// Steps the world through a_seconds of game time, in fixed ticks (FSMP's min-fps), at most
-		// maxSubSteps of them. Returns the time it took in milliseconds.
+		// One frame, as FSMP's doUpdate + writeTransform: read bone poses, step, write the simulated bones
+		// back. a_seconds is the frame's game time. Returns milliseconds spent (0 when nothing was stepped).
 		double Step(float a_seconds);
+
+		void AddSystem(hdt::Fo4System* a_system);
+		void RemoveSystem(hdt::Fo4System* a_system);
+		[[nodiscard]] std::size_t SystemCount() const noexcept { return m_systems.size(); }
 
 		[[nodiscard]] float TimeTick() const noexcept { return _timeTick; }
 		[[nodiscard]] int MaxSubSteps() const noexcept { return _maxSubSteps; }
@@ -38,7 +43,13 @@ namespace FO4SMP
 	private:
 		PhysicsWorld() = default;
 
+		btVector3 ApplyTranslationOffset();
+		void RestoreTranslationOffset(const btVector3& a_offset);
+		void UpdateActiveState();
+
 		float _timeTick = 1.0f / 60.0f;
 		int _maxSubSteps = 4;
+		float _accumulatedInterval = 0.0f;
+		float _averageInterval = 1.0f / 60.0f;
 	};
 }

@@ -1,6 +1,6 @@
 {
   "name": "fo4smp",
-  "version-string": "0.2.0",
+  "version-string": "0.3.0",
   "builtin-baseline": "60b06921c7c7ac787b23a222dfab5cdd3911712e",
   "dependencies": [
     "rsm-mmio",
@@ -14,6 +14,7 @@
       ]
     },
     "tbb",
+    "pugixml",
     "rapidjson"
   ]
 }

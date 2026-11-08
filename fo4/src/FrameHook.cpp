@@ -2,6 +2,8 @@
 
 #include "Offsets.h"
 #include "PhysicsWorld.h"
+#include "PlayerPhysics.h"
+#include "hdtDefaultBBPList.h"
 
 namespace FO4SMP::FrameHook
 {
@@ -12,6 +14,7 @@ namespace FO4SMP::FrameHook
 		OnIdle_t* g_onIdle = nullptr;  // what the call pointed at before us
 		bool g_installed = false;
 		std::atomic<bool> g_stepping = false;
+		hdt::DefaultBBPList g_defaults;
 
 		// Per-frame timing, reported every kReportSeconds.
 		constexpr double kReportSeconds = 10.0;
@@ -50,6 +53,8 @@ namespace FO4SMP::FrameHook
 
 			const float frameSeconds = std::min(std::chrono::duration<float>(now - g_lastFrame).count(), kMaxFrameSeconds);
 			g_lastFrame = now;
+
+			PlayerPhysics::Update(g_defaults);
 
 			const double ms = PhysicsWorld::Get()->Step(frameSeconds);
 			++g_frames;
@@ -104,8 +109,9 @@ namespace FO4SMP::FrameHook
 		return true;
 	}
 
-	void EnableStepping()
+	void EnableStepping(const hdt::DefaultBBPList& a_defaults)
 	{
+		g_defaults = a_defaults;
 		if (g_installed) {
 			g_stepping = true;
 			logger::info("Frame step: enabled");
