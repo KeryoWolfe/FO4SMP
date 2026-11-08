@@ -687,6 +687,60 @@ namespace hdt
 				continue;
 			}
 
+			// Fallout 4: each bone's bounding sphere, in bone space, from the vertices it weighs (skinToBone *
+			// position). FSMP uses the skin data's sphere, which in Skyrim is in bone space; BSSkin::BoneData's
+			// sphere is compared below and logged, and the sphere computed here is used either way, so the
+			// collision mid-phase (SkinnedMeshBody::updateBoundingSphereAabb) culls with spheres that hold the
+			// bone's vertices.
+			std::vector<btVector3> sphereCenter(skinned.bones.size(), btVector3(0, 0, 0));
+			std::vector<float> sphereRadius(skinned.bones.size(), 0.0f);
+			{
+				std::vector<int> count(skinned.bones.size(), 0);
+				std::vector<btVector3> boneSpace(skinned.vertices.size() * 4);
+				for (std::size_t j = 0; j < skinned.vertices.size(); ++j) {
+					const auto& sv = skinned.vertices[j];
+					for (int k = 0; k < 4; ++k) {
+						if (sv.weights[k] > 0.0f) {
+							const auto b = sv.bones[k];
+							const auto p = convertNi(skinned.bones[b].skinToBone) * convertNi(sv.position);
+							sphereCenter[b] += p;
+							++count[b];
+						}
+					}
+				}
+				float fileOffset = 0.0f, fileOffsetSkin = 0.0f;
+				int compared = 0;
+				for (std::size_t b = 0; b < skinned.bones.size(); ++b) {
+					if (count[b]) {
+						sphereCenter[b] /= static_cast<float>(count[b]);
+					}
+				}
+				for (std::size_t j = 0; j < skinned.vertices.size(); ++j) {
+					const auto& sv = skinned.vertices[j];
+					for (int k = 0; k < 4; ++k) {
+						if (sv.weights[k] > 0.0f) {
+							const auto b = sv.bones[k];
+							const auto p = convertNi(skinned.bones[b].skinToBone) * convertNi(sv.position);
+							sphereRadius[b] = std::max(sphereRadius[b], (p - sphereCenter[b]).length());
+						}
+					}
+				}
+				for (std::size_t b = 0; b < skinned.bones.size(); ++b) {
+					if (!count[b]) {
+						continue;
+					}
+					const auto file = convertNi(skinned.bones[b].boundCenter);
+					fileOffset += (file - sphereCenter[b]).length();
+					// The same center if the file's sphere were in skin (mesh) space.
+					fileOffsetSkin += (convertNi(skinned.bones[b].skinToBone) * file - sphereCenter[b]).length();
+					++compared;
+				}
+				if (compared) {
+					logger::info("Shape {}: bone spheres from vertices; the skin data's centers are {:.1f} units off on average as bone space, {:.1f} as mesh space",
+						meshName, fileOffset / compared, fileOffsetSkin / compared);
+				}
+			}
+
 			// Bones: each skin bone becomes (or reuses) a physics bone.
 			std::vector<int> localToBody(skinned.bones.size(), -1);
 			for (std::size_t boneIdx = 0; boneIdx < skinned.bones.size(); ++boneIdx) {
@@ -706,7 +760,7 @@ namespace hdt
 				}
 
 				localToBody[boneIdx] = static_cast<int>(body->m_skinnedBones.size());
-				body->addBone(bone, convertNi(sb.skinToBone), BoundingSphere(convertNi(sb.boundCenter), sb.boundRadius));
+				body->addBone(bone, convertNi(sb.skinToBone), BoundingSphere(sphereCenter[boneIdx], sphereRadius[boneIdx]));
 			}
 
 			body->m_vertices.resize(vertexStart + skinned.vertices.size());
