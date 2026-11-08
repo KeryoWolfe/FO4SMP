@@ -234,8 +234,11 @@ namespace FO4SMP::PlayerPhysics
 				const auto& w = b->m_node->world.translate;
 				const auto node = InFrame(frame, btVector3(w.x, w.y, w.z));
 				const auto rig = InFrame(frame, b->m_rig.getWorldTransform().getOrigin());
-				logger::info("  simulated bone {} (parent '{}'): node ({:.1f}, {:.1f}, {:.1f}), rigid body ({:.1f}, {:.1f}, {:.1f})",
-					b->m_name.c_str(), b->m_node->parent ? b->m_node->parent->name.c_str() : "none", node.x, node.y, node.z, rig.x, rig.y, rig.z);
+				const auto inertia = b->m_rig.getInvInertiaDiagLocal();
+				logger::info("  simulated bone {} (parent '{}'): node ({:.1f}, {:.1f}, {:.1f}), rigid body ({:.1f}, {:.1f}, {:.1f}); mass {:.3f}, inverse inertia ({:.2f}, {:.2f}, {:.2f}), scale node {:.3f} / physics {:.3f}, speed {:.1f}",
+					b->m_name.c_str(), b->m_node->parent ? b->m_node->parent->name.c_str() : "none", node.x, node.y, node.z, rig.x, rig.y, rig.z,
+					b->m_rig.getInvMass() > 0 ? 1.0f / b->m_rig.getInvMass() : 0.0f, inertia.x(), inertia.y(), inertia.z(), b->m_node->world.scale,
+					b->m_currentTransform.getScale(), b->m_rig.getLinearVelocity().length());
 			}
 		}
 
@@ -421,38 +424,10 @@ namespace FO4SMP::PlayerPhysics
 			}
 			logger::info("Player physics: {} added bone(s) placed from the bind data ({} added bones found in the skins)", fixed, added.size());
 
-			// The kinematic partners of the simulated bones (Penis_01 for Penis_01_SMP, Penis_Offset for
-			// Penis_Offset_SMP...) carry no vertices, so they have no bind data. If one still has an identity
-			// local transform, put it where its _SMP bone now is: FSMP's XMLs pair each simulated bone with a
-			// kinematic one at the same rest place.
-			for (auto* smp : added) {
-				std::string_view name{ smp->name.c_str() };
-				if (!name.ends_with("_SMP"sv)) {
-					continue;
-				}
-				const RE::BSFixedString partnerName{ std::string{ name.substr(0, name.size() - 4) }.c_str() };
-				auto* partner = hdt::fo4::findNode(a_skeleton, partnerName);
-				if (!partner || !partner->parent || depth.contains(partner) || !hdt::fo4::IsIdentity(partner->local)) {
-					continue;
-				}
-				const float dx = smp->world.translate.x - partner->world.translate.x, dy = smp->world.translate.y - partner->world.translate.y,
-							dz = smp->world.translate.z - partner->world.translate.z;
-				const float moved = std::sqrt(dx * dx + dy * dy + dz * dz);
-				if (moved < 0.5f) {
-					continue;
-				}
-				RE::NiTransform world = partner->world;
-				world.translate = smp->world.translate;
-				partner->local = hdt::fo4::LocalFromWorld(partner->parent->world, world);
-				partner->world = world;
-				// Its children (Anus_01 is Anus_01_SMP's parent) keep their place.
-				for (auto& child : hdt::fo4::Children(partner)) {
-					if (child) {
-						child->local = hdt::fo4::LocalFromWorld(partner->world, child->world);
-					}
-				}
-				logger::info("Player physics: kinematic partner '{}' (parent '{}') moved {:.1f} units to '{}'", partner->name.c_str(), partner->parent->name.c_str(), moved, name);
-			}
+			// (Run 13 also moved each simulated bone's kinematic partner, Penis_Offset for Penis_Offset_SMP, onto
+			// its _SMP bone. Removed in run 22: A-Body's constraints expect the offset between them, e.g.
+			// PenisConstOffset holds Penis_Offset_SMP 3 units along x from Penis_Offset, so the move made that
+			// constraint pull the penis root by about 3 units forever.)
 		}
 
 		void BuildFollow(RE::NiNode* a_skeleton, hdt::Fo4System* a_system)
@@ -759,7 +734,7 @@ namespace FO4SMP::PlayerPhysics
 
 		static int dumps = 0;
 		static auto nextDump = now;
-		if (dumps < 6 && now >= nextDump) {
+		if (dumps < 12 && now >= nextDump) {
 			for (const auto& b : g_built) {
 				DumpGeometry(b);
 			}
