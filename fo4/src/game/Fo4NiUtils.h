@@ -19,7 +19,11 @@ namespace hdt::fo4
 		return reinterpret_cast<std::uintptr_t>(info.allocationBase);
 	}
 
-	// True if a_object's class is a_mangledName (".?AVNiNode@@") or derives from it.
+	inline bool IsKindOfUncached(std::uintptr_t a_vtbl, std::string_view a_mangledName) noexcept;
+
+	// True if a_object's class is a_mangledName (".?AVNiNode@@") or derives from it. Answers are cached
+	// per vtable: the RTTI walk (and its VirtualQuery) is too slow to repeat for every node of every
+	// skeleton search.
 	inline bool IsKindOf(const void* a_object, std::string_view a_mangledName) noexcept
 	{
 		const auto object = reinterpret_cast<std::uintptr_t>(a_object);
@@ -30,6 +34,27 @@ namespace hdt::fo4
 		if (!vtbl || vtbl > kCanonicalUserSpaceMax) {
 			return false;
 		}
+		struct KeyHash
+		{
+			std::size_t operator()(const std::pair<std::uintptr_t, std::size_t>& a_key) const noexcept { return a_key.first * 31 ^ a_key.second; }
+		};
+		static std::mutex lock;
+		static std::unordered_map<std::pair<std::uintptr_t, std::size_t>, bool, KeyHash> cache;
+		const std::pair key{ vtbl, std::hash<std::string_view>{}(a_mangledName) };
+		{
+			std::scoped_lock guard{ lock };
+			if (const auto it = cache.find(key); it != cache.end()) {
+				return it->second;
+			}
+		}
+		const bool result = IsKindOfUncached(vtbl, a_mangledName);
+		std::scoped_lock guard{ lock };
+		cache.emplace(key, result);
+		return result;
+	}
+
+	inline bool IsKindOfUncached(std::uintptr_t vtbl, std::string_view a_mangledName) noexcept
+	{
 		const auto col = *reinterpret_cast<const std::uintptr_t*>(vtbl - sizeof(void*));
 		if (!col || col > kCanonicalUserSpaceMax) {
 			return false;
@@ -178,26 +203,28 @@ namespace hdt::fo4
 		return r;
 	}
 
-	// parent * local, as the engine composes world transforms.
+	// Fallout 4 stores rotations transposed (row-vector convention): the engine's NiTransform multiply
+	// (1.11.240 +0344820) computes world.rotate = local.rotate * parent.rotate and
+	// world.translate = parent.translate + parent.scale * (local.translate as a row vector * parent.rotate).
 	inline RE::NiTransform Compose(const RE::NiTransform& a_parent, const RE::NiTransform& a_local)
 	{
 		RE::NiTransform r;
-		r.rotate = Mul(a_parent.rotate, a_local.rotate);
-		const auto t = Mul(a_parent.rotate, a_local.translate);
+		r.rotate = Mul(a_local.rotate, a_parent.rotate);
+		const auto t = Mul(Transposed(a_parent.rotate), a_local.translate);  // row vector * parent.rotate
 		r.translate = { a_parent.translate.x + t.x * a_parent.scale, a_parent.translate.y + t.y * a_parent.scale, a_parent.translate.z + t.z * a_parent.scale };
 		r.scale = a_parent.scale * a_local.scale;
 		return r;
 	}
 
-	// The local transform that puts a child at a_world under a_parent (rotations are orthonormal).
+	// The local transform that puts a child at a_world under a_parent (inverse of Compose; rotations are
+	// orthonormal).
 	inline RE::NiTransform LocalFromWorld(const RE::NiTransform& a_parent, const RE::NiTransform& a_world)
 	{
 		RE::NiTransform r;
-		const auto inv = Transposed(a_parent.rotate);
 		const float invScale = a_parent.scale != 0.0f ? 1.0f / a_parent.scale : 1.0f;
-		r.rotate = Mul(inv, a_world.rotate);
+		r.rotate = Mul(a_world.rotate, Transposed(a_parent.rotate));
 		const RE::NiPoint3 d{ a_world.translate.x - a_parent.translate.x, a_world.translate.y - a_parent.translate.y, a_world.translate.z - a_parent.translate.z };
-		const auto t = Mul(inv, d);
+		const auto t = Mul(a_parent.rotate, d);  // row vector * parent.rotate^T
 		r.translate = { t.x * invScale, t.y * invScale, t.z * invScale };
 		r.scale = a_world.scale * invScale;
 		return r;

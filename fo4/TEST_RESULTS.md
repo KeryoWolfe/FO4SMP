@@ -72,3 +72,8 @@ Same setup, build before `affa915` and `0bc412b`. Physics core, configs and defa
 2. Configure: CommonLibF4 needs `rapidcsv` (added to vcpkg.json).
 3. Compile: `hdtSkinnedMeshWorld.cpp(76)` needed FSMP's smart-pointer-to-raw-pointer `operator==` (added to the PCH).
 4. Built and linked, no warnings in the log.
+
+## Milestone 3, runs 1 and 2 (7 November 2026)
+
+- Run 1: all 40 skinned shapes on the player read (A-Body body, `Virtual*` shapes, head, hair), but no physics built: the `HDT Skinned Mesh Physics Object` extra data on `MaleBody.nif`'s root is gone once the outfit is attached (as in Skyrim; read in the attach hook in milestone 4). Fixed for now by mapping `BaseMaleBody:0Full` in the shipped `defaultBBPs.xml`.
+- Run 2: `MaleBody.xml` built (110 bones, 22 simulated, 11 collision bodies; rebuilt after an outfit change, 140 bones), physics step 3.5 ms average. In game: huge stretched triangles from the body. Cause found in the engine: Fallout 4 stores rotation matrices transposed relative to Skyrim (its NiTransform multiply, 1.11.240 +0344820, computes world.rotate = local.rotate * parent.rotate), so every rotation handed to Bullet was inverted. Fixed in `Fo4ConvertNi.cpp` and `Fo4NiUtils.h` (checked numerically against the disassembled multiply). Also: the build stalled the game 2.5 s, mostly uncached RTTI checks in node searches; now cached per vtable.

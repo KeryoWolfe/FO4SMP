@@ -13,16 +13,15 @@ namespace hdt
 		//if (XMQuaternionIsInfinite(q) || XMQuaternionIsNaN(q))
 		//	return XMQuaternionIdentity();
 		//return q;
+		// Fallout 4: the engine stores rotations transposed relative to Skyrim (row vectors: its
+		// NiTransform multiply at 1.11.240 +0344820 computes world.rotate = local.rotate * parent.rotate),
+		// so Bullet's column-vector matrix is the transpose of the stored one.
 		btMatrix3x3 mat;
-		mat[0][0] = rhs.entry[0][0];
-		mat[0][1] = rhs.entry[0][1];
-		mat[0][2] = rhs.entry[0][2];
-		mat[1][0] = rhs.entry[1][0];
-		mat[1][1] = rhs.entry[1][1];
-		mat[1][2] = rhs.entry[1][2];
-		mat[2][0] = rhs.entry[2][0];
-		mat[2][1] = rhs.entry[2][1];
-		mat[2][2] = rhs.entry[2][2];
+		for (int i = 0; i < 3; ++i) {
+			for (int j = 0; j < 3; ++j) {
+				mat[i][j] = rhs.entry[j][i];
+			}
+		}
 		btQuaternion q;
 		mat.getRotation(q);
 		return q;
@@ -56,16 +55,14 @@ namespace hdt
 
 	RE::NiMatrix3 convertBt(const btMatrix3x3& rhs)
 	{
+		// Fallout 4: stored transposed, see convertNi.
 		RE::NiMatrix3 ret;
-		ret.entry[0][0] = rhs[0][0];
-		ret.entry[0][1] = rhs[0][1];
-		ret.entry[0][2] = rhs[0][2];
-		ret.entry[1][0] = rhs[1][0];
-		ret.entry[1][1] = rhs[1][1];
-		ret.entry[1][2] = rhs[1][2];
-		ret.entry[2][0] = rhs[2][0];
-		ret.entry[2][1] = rhs[2][1];
-		ret.entry[2][2] = rhs[2][2];
+		for (int i = 0; i < 3; ++i) {
+			for (int j = 0; j < 3; ++j) {
+				ret.entry[i][j] = rhs[j][i];
+			}
+			ret.entry[i][3] = 0.0f;
+		}
 		return ret;
 	}
 }
