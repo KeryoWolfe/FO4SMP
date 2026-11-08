@@ -95,9 +95,9 @@ namespace FO4SMP::PlayerPhysics
 				if (body->m_vertices.empty()) {
 					continue;
 				}
-				std::vector<btMatrix4x3T> toWorld;
+				std::vector<hdt::btMatrix4x3T> toWorld;
 				for (auto& sb : body->m_skinnedBones) {
-					toWorld.push_back(btMatrix4x3T(sb.ptr->m_currentTransform) * sb.vertexToBone);
+					toWorld.push_back(hdt::btMatrix4x3T(sb.ptr->m_currentTransform) * sb.vertexToBone);
 				}
 				const btVector3 big(1e30f, 1e30f, 1e30f);
 				btVector3 sum(0, 0, 0), lo = big, hi = -big, skinLo = big, skinHi = -big;
