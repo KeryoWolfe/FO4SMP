@@ -1,5 +1,18 @@
 # FO4SMP test results
 
+## Milestone 1, run 3: 7 November 2026, 18:46 (FO4 Faster HDT-SMP disabled)
+
+Same build and setup as run 2, FO4 Faster HDT-SMP **disabled**.
+
+| Check | Expected | Actual | Status |
+|---|---|---|---|
+| Addresses | 24 OK | 23 OK, 1 HOOKED, 0 failed. `BSFaceGenNiNode` vtable slot 0x43 points at `SkinAllGeometry` | Pass |
+| Rest (configs, default physics, core, console) | as run 2 | as run 2; empty step 0.014 ms | Pass |
+
+The 9 functions FO4 Faster HDT-SMP had jumped over all compare OK with it off, so their addresses are confirmed. **`BipedAnim::AttachSkinnedObject` is still hooked**, by another plugin in the load order (its jump lands in trampoline memory, which this build couldn't name; the milestone 2 build follows trampolines to the module). Armor attach is where FO4SMP's own hook goes in milestone 4, so it will have to chain with that plugin's.
+
+**Milestone 1: passed.**
+
 ## Milestone 1, run 2: 7 November 2026, 18:07 (owner's machine)
 
 | | |

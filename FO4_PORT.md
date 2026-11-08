@@ -73,8 +73,8 @@ Checked in CommonLibF4 at `4379567`: `BSSkin::Instance` (forward declaration onl
 
 ## Proposed milestones
 
-1. **Loads.** F4SE plugin with the reusable core linked: logs, reads `configs.json` and the default physics XML (`defaultBBPs.xml`), reports its version in the console. No hooks. *(Built and tested 7 November 2026: passes, with FO4 Faster HDT-SMP enabled; 10 addresses it hooks still to be compared with it off. fo4/TEST_RESULTS.md.)*
-2. **Frame step.** Hook the frame loop; step an empty physics world; log the step time.
+1. **Loads.** F4SE plugin with the reusable core linked: logs, reads `configs.json` and the default physics XML (`defaultBBPs.xml`), reports its version in the console. No hooks. *(Passed 7 November 2026, fo4/TEST_RESULTS.md: 23 of 24 addresses compare OK; `BipedAnim::AttachSkinnedObject` is hooked by another plugin in the owner's load order.)*
+2. **Frame step.** Hook the frame loop; step an empty physics world; log the step time. *(Written 7 November 2026: the main loop's call to `Main::OnIdle`, ID 4484191 +0xCB, redirected; not yet built.)*
 3. **One body.** Bind SMP to the player's body mesh (A-Body or CBBE with an SMP XML) through a console command, no armor hooks: proves the `BSSkin` binding.
 4. **Armor and actors.** Attach / detach hooks, NPCs, culling, cell changes, save / load.
 5. **Head parts, Papyrus, MCM, validator.**

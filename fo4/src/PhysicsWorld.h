@@ -26,6 +26,10 @@ namespace FO4SMP
 		// Steps the empty world through one 1/60 s frame. Returns the time it took in milliseconds.
 		double SmokeStep();
 
+		// Steps the world through a_seconds of game time, in fixed ticks (FSMP's min-fps), at most
+		// maxSubSteps of them. Returns the time it took in milliseconds.
+		double Step(float a_seconds);
+
 		[[nodiscard]] float TimeTick() const noexcept { return _timeTick; }
 		[[nodiscard]] int MaxSubSteps() const noexcept { return _maxSubSteps; }
 		[[nodiscard]] int NumIterations() { return getSolverInfo().m_numIterations; }

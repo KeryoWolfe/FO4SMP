@@ -41,8 +41,8 @@ namespace FO4SMP::AddressCheck
 			return std::filesystem::path{ std::string_view{ path, len } }.filename().string();
 		}
 
-		// Where a jump at a_address leads, if the code there starts with one (E9 rel32, or FF 25 [rip+disp32]),
-		// as a detour or trampoline hook leaves it. 0 when it doesn't start with a jump.
+		// Where a jump at a_address leads, if the code there starts with one (E9 rel32, FF 25 [rip+disp32],
+		// or mov rax, imm64 / jmp rax), as a detour or trampoline hook leaves it. 0 when it doesn't.
 		std::uintptr_t JumpTarget(std::uintptr_t a_address) noexcept
 		{
 			const auto* code = reinterpret_cast<const std::uint8_t*>(a_address);
@@ -58,7 +58,25 @@ namespace FO4SMP::AddressCheck
 				std::memcpy(&target, reinterpret_cast<const void*>(a_address + 6 + disp), sizeof(target));
 				return target;
 			}
+			if (code[0] == 0x48 && code[1] == 0xB8 && code[10] == 0xFF && code[11] == 0xE0) {
+				std::uintptr_t target;
+				std::memcpy(&target, code + 2, sizeof(target));
+				return target;
+			}
 			return 0;
+		}
+
+		// Follows a hook's jumps (a trampoline often jumps again) until one lands in a module.
+		// Returns that module's file name, or "" when the chain ends outside any module.
+		std::string HookOwner(std::uintptr_t a_target)
+		{
+			for (int hop = 0; hop < 4 && a_target != 0; ++hop) {
+				if (auto owner = ModuleOf(a_target); !owner.empty()) {
+					return owner;
+				}
+				a_target = JumpTarget(a_target);
+			}
+			return {};
 		}
 
 		std::string Hex(std::uintptr_t a_address, std::size_t a_count)
@@ -92,7 +110,7 @@ namespace FO4SMP::AddressCheck
 				return Outcome::kOK;
 			}
 			if (const auto target = JumpTarget(a_address)) {
-				const auto owner = ModuleOf(target);
+				const auto owner = HookOwner(target);
 				logger::warn("Address check: {} (ID {}) at +{:07X} HOOKED by {}: starts with a jump, so its code can't be compared. Check again with that plugin off.",
 					a_name, a_id.id(), a_address - Base(), owner.empty() ? "another plugin"s : owner);
 				return Outcome::kHooked;

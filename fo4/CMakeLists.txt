@@ -3,11 +3,11 @@ cmake_minimum_required(VERSION 3.25)
 # FO4SMP: Faster HDT-SMP for Fallout 4 (1.11.240).
 # Milestone 1: the plugin loads, logs, checks the addresses it will hook, links FSMP's physics core,
 # reads configs.json and defaultBBPs.xml, steps an empty physics world once and reports in the
-# console. No hooks yet (see FO4_PORT.md).
+# console. Milestone 2: one hook steps the physics world every frame (see FO4_PORT.md).
 
 project(
 	FO4SMP
-	VERSION 0.1.0
+	VERSION 0.2.0
 	LANGUAGES CXX
 )
 
@@ -68,6 +68,8 @@ add_library(
 	src/Config.h
 	src/Console.cpp
 	src/Console.h
+	src/FrameHook.cpp
+	src/FrameHook.h
 	src/Offsets.h
 	src/PCH.h
 	src/PhysicsWorld.cpp

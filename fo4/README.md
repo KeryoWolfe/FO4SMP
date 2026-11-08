@@ -2,20 +2,16 @@
 
 Faster HDT-SMP (FSMP) ported to Fallout 4. Target: Fallout 4 1.11.240 (Steam), F4SE, Address Library. Plan and audit: `../FO4_PORT.md`. Addresses: `ADDRESSES.md`.
 
-## State: milestone 1 (written, not yet built)
+## State: milestone 2 (written, not yet built)
 
-On 1.11.240 only, the plugin:
+Milestone 1 (tested 7 November 2026, `TEST_RESULTS.md`), on 1.11.240 only:
 
-- writes `FO4SMP.log`;
-- checks the 24 game addresses later milestones hook (one `Address check` line each);
+- writes `FO4SMP.log`; checks the 24 game addresses later milestones hook (one `Address check` line each);
 - warns if FO4 Faster HDT-SMP is loaded too;
-- links FSMP's physics core (Bullet, the skinned-mesh world) and creates the physics world;
-- reads `F4SE\Plugins\FO4SMP\configs.json` (and `userConfigs.json` on top, if present) into it, as FSMP does;
-- reads `F4SE\Plugins\FO4SMP\defaultBBPs.xml`;
-- steps the empty physics world once and logs the time;
-- prints its version and status in the console after a save loads.
+- links FSMP's physics core and creates the physics world; reads `F4SE\Plugins\FO4SMP\configs.json` (and `userConfigs.json`) and `defaultBBPs.xml`; steps the empty world once;
+- prints its status in the console after a save loads.
 
-**No hooks and no physics on actors yet.** The config's `logLevel` isn't applied in this milestone (the shipped 0 would hide the test's own lines).
+Milestone 2 adds **the first hook**: the game's main loop calls `Main::OnIdle` once per iteration, and FO4SMP redirects that one call to its own function, which calls `Main::OnIdle` (or whatever was there) and then steps the physics world through the frame's time. The world is still empty: **nothing is attached to actors yet**. Every 10 seconds the log reports frames, frame rate and the physics step's average and longest time.
 
 ## Build
 
@@ -30,22 +26,18 @@ cmake --build --preset release
 
 Run from the "x64 Native Tools Command Prompt" of the newest Visual Studio installed. The first configure builds FSMP's patched Bullet and oneTBB through vcpkg (several minutes). With `FO4SMP_DEPLOY_DIR` set, each build copies `F4SE\Plugins\FO4SMP.dll`, its PDB and `F4SE\Plugins\FO4SMP\configs.json` / `defaultBBPs.xml` into that folder; without it the DLL is `fo4/build/release/FO4SMP.dll` and the config files are in `fo4/package/`.
 
-## Test (milestone 1)
+## Test (milestone 2)
 
-1. Enable the `FO4SMP` mod in MO2. FO4 Faster HDT-SMP can stay enabled (FO4SMP installs no hooks, and warns about it), but for a full address check run once with it disabled.
-2. Start the game and load a save.
-3. In the console, expect one line: `FO4SMP 0.1.0: addresses OK, physics core running. No physics on actors yet (milestone 1).`
-4. Open `Documents\My Games\Fallout4\F4SE\FO4SMP.log`. Expected, in order:
-   - `FO4SMP 0.1.0 loading on Fallout 4 1.11.240.0`
-   - 24 `Address check:` lines, then a summary (`N OK, N hooked by another plugin, 0 failed`) and `Address check passed`. With FO4 Faster HDT-SMP enabled, the functions it hooks show as `HOOKED by FO4FasterHdtSMP-AVX2.dll` (its jumps replace their first bytes, so they can't be compared); with it disabled, all 24 should be `OK`.
-   - `Another SMP plugin is loaded: FO4FasterHdtSMP-AVX2.dll ...` (if it is enabled)
-   - `Game data ready`
-   - `Config: read Data/F4SE/Plugins/FO4SMP/configs.json`, `Config: no ...userConfigs.json`, five `Config:` lines with the values (`solver numIterations=16 erp=0.2 min-fps=60 maxSubSteps=4`, ...)
-   - `Default physics: read ...defaultBBPs.xml: 0 shape map(s), 0 remap(s)`
-   - `Physics simulation is using N threads` (FSMP's own line), then `Physics world created: 16 solver iterations, erp 0.2, time tick 0.0167 s (60 fps), up to 4 substeps, wind on`
-   - `Physics world: one empty step took ... ms`
-   - `Console: printed "..."`
-5. Send the log either way. A `FAILED` line names the address that's wrong; `Physics world could not start` means the core failed.
+1. **Disable FO4 Faster HDT-SMP** in MO2 for this test (it may hook the same main-loop call; FO4SMP would chain to it, but the timing is clearer alone). Enable `FO4SMP`.
+2. Start the game, load a save, then play normally for a minute or two: walk around, open and close the Pip-Boy, change cells once.
+3. Console, after the save loads: `FO4SMP 0.2.0: addresses OK, physics core running, frame step hooked. No physics on actors yet (milestone 2).`
+4. In `FO4SMP.log`, expect:
+   - `Frame hook: installed at the main loop's call to Main::OnIdle (+0C315BB)`, right after `Address check passed`
+   - `Frame step: enabled` after `Physics world: one empty step ...`
+   - `Frame step: first frame seen; stepping from the next one`
+   - every 10 seconds: `Frame step: N frames in 10.0 s (X fps); physics step average ... ms, longest ... ms`
+5. Things to compare: the logged fps against what the game shows (they should be close, if `Main::OnIdle` runs once per frame), and the step times (they should stay well under a millisecond with an empty world). Also any stutter, hang or crash that doesn't happen with FO4SMP disabled.
+6. If something else hooked the same call first, the log says `Frame hook: the main loop's call already points at ...` and FO4SMP calls it in turn.
 
 ## Checks that run without the game
 

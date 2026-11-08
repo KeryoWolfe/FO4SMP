@@ -37,6 +37,13 @@ namespace FO4SMP::Offsets
 	// 976 calls to ConsoleLog::Print / AddString (ADDRESSES.md).
 	inline constexpr REL::ID ConsoleLog_Singleton{ 4797437 };
 
+	// The game's main loop, and in it the call to Main::OnIdle (the frame hook's site, milestone 2).
+	// Found in 1.11.240: the only caller of Main::OnIdle; `mov rcx, [Main singleton]; call OnIdle`
+	// once per loop iteration.
+	inline constexpr REL::ID          MainLoop{ 4484191 };
+	inline constexpr std::ptrdiff_t   MainLoop_OnIdleCall = 0xCB;
+	inline constexpr REL::ID          MainOnIdle{ 2228917 };
+
 	struct Function
 	{
 		std::string_view              name;

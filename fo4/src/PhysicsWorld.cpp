@@ -22,8 +22,13 @@ namespace FO4SMP
 
 	double PhysicsWorld::SmokeStep()
 	{
+		return Step(1.0f / 60.0f);
+	}
+
+	double PhysicsWorld::Step(float a_seconds)
+	{
 		const auto start = std::chrono::steady_clock::now();
-		stepSimulation(1.0f / 60.0f, _maxSubSteps, _timeTick);
+		stepSimulation(a_seconds, _maxSubSteps, _timeTick);
 		const auto end = std::chrono::steady_clock::now();
 		return std::chrono::duration<double, std::milli>(end - start).count();
 	}

@@ -2,12 +2,14 @@
 //
 // Milestone 1: on 1.11.240 the plugin loads, logs, checks the addresses later milestones hook,
 // links FSMP's physics core and creates its world, reads configs.json and defaultBBPs.xml,
-// steps the empty world once, and reports its version in the console. No hooks are installed:
-// nothing is attached to actors and physics doesn't run per frame yet.
+// steps the empty world once, and reports its version in the console.
+// Milestone 2: one hook, on the main loop's call to Main::OnIdle, steps the (still empty)
+// physics world every frame and logs its timing. Nothing is attached to actors yet.
 
 #include "AddressCheck.h"
 #include "Config.h"
 #include "Console.h"
+#include "FrameHook.h"
 #include "PhysicsWorld.h"
 
 namespace
@@ -69,6 +71,7 @@ namespace
 			const double ms = world->SmokeStep();
 			logger::info("Physics world: one empty step took {:.3f} ms", ms);
 			g_worldOK = true;
+			FO4SMP::FrameHook::EnableStepping();
 		} catch (const std::exception& e) {
 			logger::critical("Physics world could not start: {}", e.what());
 		} catch (...) {
@@ -81,12 +84,13 @@ namespace
 		if (g_reportedInConsole) {
 			return;
 		}
-		const auto line = std::format("{} {}: {}, physics core {}. No physics on actors yet (milestone 1).",
+		const auto line = std::format("{} {}: {}, physics core {}, frame step {}. No physics on actors yet (milestone 2).",
 			Version::PROJECT, Version::NAME,
 			g_addresses.Passed() ?
 				(g_addresses.hooked ? std::format("addresses OK ({} hooked by another plugin)", g_addresses.hooked) : "addresses OK"s) :
 				"ADDRESS CHECK FAILED (see FO4SMP.log)"s,
-			g_worldOK ? "running" : "FAILED (see FO4SMP.log)");
+			g_worldOK ? "running" : "FAILED (see FO4SMP.log)",
+			FO4SMP::FrameHook::Installed() ? "hooked" : "NOT HOOKED (see FO4SMP.log)");
 		if (FO4SMP::Console::Print(line)) {
 			g_reportedInConsole = true;
 			logger::info("Console: printed \"{}\"", line);
@@ -142,8 +146,9 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 	g_addresses = FO4SMP::AddressCheck::Run();
 	if (g_addresses.Passed()) {
 		logger::info("Address check passed");
+		FO4SMP::FrameHook::Install();
 	} else {
-		logger::error("Address check failed; later milestones won't install hooks on this runtime.");
+		logger::error("Address check failed; no hooks installed on this runtime.");
 	}
 
 	const auto messaging = F4SE::GetMessagingInterface();
