@@ -135,10 +135,13 @@ namespace FO4SMP::PlayerPhysics
 			for (auto& bone : system->getBones()) {
 				auto* b = static_cast<hdt::Fo4Bone*>(bone.get());
 				const auto& w = b->m_node->world.translate;
-				const float off = (b->m_currentTransform.getOrigin() - btVector3(w.x, w.y, w.z)).length();
-				if (b->m_rig.isStaticOrKinematicObject() && off > 1.0f) {
-					logger::info("  kinematic bone {} (parent '{}'): FSMP's copy {:.1f} units from the node", b->m_name.c_str(),
-						b->m_node->parent ? b->m_node->parent->name.c_str() : "none", off);
+				if (b->m_rig.isStaticOrKinematicObject()) {
+					std::string_view n{ b->m_name.c_str() };
+					if (n.starts_with("Penis"sv) || n.starts_with("Anus"sv) || n.find("Butt"sv) != n.npos || n.find("Breast"sv) != n.npos || n.starts_with("Belly"sv) || n.find("Thigh_Low"sv) != n.npos) {
+						const auto p = InFrame(frame, btVector3(w.x, w.y, w.z));
+						logger::info("  kinematic bone {} (parent '{}'): node ({:.1f}, {:.1f}, {:.1f}), local {}", n, b->m_node->parent ? b->m_node->parent->name.c_str() : "none",
+							p.x, p.y, p.z, hdt::fo4::IsIdentity(b->m_node->local) ? "identity" : "set");
+					}
 				}
 			}
 			for (auto& bone : system->getBones()) {
@@ -163,7 +166,7 @@ namespace FO4SMP::PlayerPhysics
 		//   world(X) = world(R) * skinToBone(R) * skinToBone(X)^-1
 		// and set its local transform from that. A bone is "added" when it hangs off the Root bone (directly
 		// or through other added bones) outside COM_Offset / COM; only real bones serve as anchors.
-		void FixAddedBones(RE::NiAVObject* a_model)
+		void FixAddedBones(RE::NiNode* a_skeleton, RE::NiAVObject* a_model)
 		{
 			struct Shape
 			{
@@ -279,6 +282,39 @@ namespace FO4SMP::PlayerPhysics
 					node->name.c_str(), node->parent->name.c_str(), moved, best->node->name.c_str(), bestShape->name);
 			}
 			logger::info("Player physics: {} added bone(s) placed from the bind data ({} added bones found in the skins)", fixed, added.size());
+
+			// The kinematic partners of the simulated bones (Penis_01 for Penis_01_SMP, Penis_Offset for
+			// Penis_Offset_SMP...) carry no vertices, so they have no bind data. If one still has an identity
+			// local transform, put it where its _SMP bone now is: FSMP's XMLs pair each simulated bone with a
+			// kinematic one at the same rest place.
+			for (auto* smp : added) {
+				std::string_view name{ smp->name.c_str() };
+				if (!name.ends_with("_SMP"sv)) {
+					continue;
+				}
+				const RE::BSFixedString partnerName{ std::string{ name.substr(0, name.size() - 4) }.c_str() };
+				auto* partner = hdt::fo4::findNode(a_skeleton, partnerName);
+				if (!partner || !partner->parent || depth.contains(partner) || !hdt::fo4::IsIdentity(partner->local)) {
+					continue;
+				}
+				const float dx = smp->world.translate.x - partner->world.translate.x, dy = smp->world.translate.y - partner->world.translate.y,
+							dz = smp->world.translate.z - partner->world.translate.z;
+				const float moved = std::sqrt(dx * dx + dy * dy + dz * dz);
+				if (moved < 0.5f) {
+					continue;
+				}
+				RE::NiTransform world = partner->world;
+				world.translate = smp->world.translate;
+				partner->local = hdt::fo4::LocalFromWorld(partner->parent->world, world);
+				partner->world = world;
+				// Its children (Anus_01 is Anus_01_SMP's parent) keep their place.
+				for (auto& child : hdt::fo4::Children(partner)) {
+					if (child) {
+						child->local = hdt::fo4::LocalFromWorld(partner->world, child->world);
+					}
+				}
+				logger::info("Player physics: kinematic partner '{}' (parent '{}') moved {:.1f} units to '{}'", partner->name.c_str(), partner->parent->name.c_str(), moved, name);
+			}
 		}
 
 		struct Candidate
@@ -363,7 +399,7 @@ namespace FO4SMP::PlayerPhysics
 					continue;
 				}
 				logger::info("Player physics: building {} from {} (model node '{}')", c.file, c.source, c.model->name.c_str());
-				FixAddedBones(c.model);
+				FixAddedBones(skeleton, c.model);
 
 				hdt::DefaultBBP::PhysicsFile_t file{ c.file, {} };
 				hdt::Fo4SystemCreator creator;
