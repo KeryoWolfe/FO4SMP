@@ -3,6 +3,7 @@
 
 #include "Fo4System.h"
 #include "hdtSkinnedMesh/hdtSkinnedMeshShape.h"
+#include "hdtSkinnedMesh/hdtSkinnedMeshWorld.h"  // RESET_PHYSICS
 
 #include "Fo4Skin.h"
 #include "Fo4Settings.h"
