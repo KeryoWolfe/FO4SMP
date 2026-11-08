@@ -36,6 +36,9 @@ namespace hdt
 
 		const std::vector<RE::BSTSmartPointer<SkinnedMeshBody>>& meshes() const { return m_meshes; }
 
+		// Fallout 4: turns back on every constraint Bullet disabled (broke) and that ties a simulated bone; returns how many.
+		int ReenableConstraints();
+
 		RE::NiPointer<RE::NiNode> m_skeleton;
 		RE::NiPointer<RE::NiNode> m_oldRoot;
 		bool m_initialized = false;

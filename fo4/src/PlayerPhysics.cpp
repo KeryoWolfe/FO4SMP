@@ -893,6 +893,21 @@ namespace FO4SMP::PlayerPhysics
 			// back on its rest pose beside its anchor, at rest, and let it settle again.
 			if (hdt::Fo4Bone::TakeExplosion()) {
 				++g_systemResets;
+				// Bullet disables ("breaks") a constraint whose impulse reaches its breaking threshold (infinite by
+				// default); an exploded step gives infinite impulses, so the joints stay off for good and the bones
+				// fall freely (run 25: after one big explosion, the penis fell straight down and was reset about once
+				// a second). Turn every constraint between a simulated bone and anything back on.
+				int reenabled = 0;
+				for (const auto& b : g_built) {
+					reenabled += b.system->ReenableConstraints();
+				}
+				if (reenabled) {
+					static int s_logged = 0;
+					if (s_logged < 20) {
+						++s_logged;
+						logger::warn("Player physics: {} constraint(s) had been disabled (broken) by the explosion; turned back on", reenabled);
+					}
+				}
 				for (const auto& b : g_built) {
 					for (auto& bone : b.system->getBones()) {
 						auto* fb = static_cast<hdt::Fo4Bone*>(bone.get());

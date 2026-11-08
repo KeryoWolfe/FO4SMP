@@ -2,6 +2,7 @@
 // Fallout 4's scene graph and skinning; see fo4/README.md. Changes are marked "Fallout 4:".
 
 #include "Fo4System.h"
+#include "hdtSkinnedMesh/hdtConstraintGroup.h"
 #include "hdtSkinnedMesh/hdtSkinnedMeshShape.h"
 #include "hdtSkinnedMesh/hdtSkinnedMeshWorld.h"  // RESET_PHYSICS
 
@@ -89,6 +90,29 @@ namespace hdt
 		m_skeleton(skeleton), m_oldRoot(nullptr)
 	{
 		m_oldRoot = m_skeleton;
+	}
+
+	int Fo4System::ReenableConstraints()
+	{
+		// Bullet disables a constraint whose impulse reaches its breaking threshold (infinite by default), which an
+		// exploded step does; FSMP never turns it back on, so the joint would stay off for good.
+		int count = 0;
+		auto reenable = [&](BoneScaleConstraint* a_constraint) {
+			auto* c = a_constraint ? a_constraint->getConstraint() : nullptr;
+			if (c && !c->isEnabled() && !(c->getRigidBodyA().isStaticOrKinematicObject() && c->getRigidBodyB().isStaticOrKinematicObject())) {
+				c->setEnabled(true);
+				++count;
+			}
+		};
+		for (auto& c : m_constraints) {
+			reenable(c.get());
+		}
+		for (auto& g : m_constraintGroups) {
+			for (auto& c : g->m_constraints) {
+				reenable(c.get());
+			}
+		}
+		return count;
 	}
 
 	float Fo4System::prepareForRead(float timeStep)
