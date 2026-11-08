@@ -550,6 +550,38 @@ namespace FO4SMP::PlayerPhysics
 			}
 		}
 
+		// The NIF the physics' shapes come from, for the skin bone names the game leaves null (see
+		// Fo4SystemCreator::m_nifBoneNames). Until the attach hook knows the outfit's model path (milestone 4),
+		// it is found from the physics XML's name: <xml path>.nif, then
+		// Meshes\Actors\Character\CharacterAssets\<xml name>.nif (A-Body's MaleBody.xml / MaleBody.nif), and
+		// is used only if it has a bone list for every shape it is asked about.
+		std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>> g_nifCache;
+
+		const std::unordered_map<std::string, std::vector<std::string>>* NifBoneNames(const std::string& a_xml, const std::vector<std::string>& a_shapes)
+		{
+			std::filesystem::path xml{ a_xml };
+			std::vector<std::string> paths;
+			auto withNif = xml;
+			withNif.replace_extension(".nif");
+			paths.push_back(withNif.string());
+			paths.push_back((std::filesystem::path{ "Meshes" } / "Actors" / "Character" / "CharacterAssets" / xml.stem()).string() + ".nif");
+			for (const auto& path : paths) {
+				auto it = g_nifCache.find(path);
+				if (it == g_nifCache.end()) {
+					std::unordered_map<std::string, std::vector<std::string>> names;
+					const auto data = hdt::fo4::readAllFile(path.c_str());
+					const auto error = data.empty() ? std::string{ "not found (loose files only)" } : hdt::fo4::ReadNifSkinBoneNames(data, names);
+					logger::info("Player physics: NIF {}: {}", path, error.empty() ? std::format("{} skinned shape(s)", names.size()) : error);
+					it = g_nifCache.emplace(path, std::move(names)).first;
+				}
+				if (!it->second.empty() && std::ranges::all_of(a_shapes, [&](const std::string& s) { return it->second.contains(s); })) {
+					logger::info("Player physics: skin bone names from {}", path);
+					return &it->second;
+				}
+			}
+			return nullptr;
+		}
+
 		struct Candidate
 		{
 			RE::NiAVObject* model;
@@ -625,13 +657,13 @@ namespace FO4SMP::PlayerPhysics
 
 			const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_rootSince).count();
 			if (!candidates.empty() && g_unresolved > 0) {
-				if (waited < kBoneWaitSeconds) {
+				if (false && waited < kBoneWaitSeconds) {  // the NIF's bone names fill them now (kept for reference)
 					logger::info("Player physics: {} skin bone(s) of the player's shapes aren't set yet ({:.0f} s after the 3D loaded); waiting", g_unresolved, waited);
 					g_waiting = true;
 					g_reportedEmpty = true;  // don't list the shapes again
 					return;
 				}
-				logger::warn("Player physics: {} skin bone(s) still unset after {:.0f} s; building anyway (collision shapes on those bones will be wrong)", g_unresolved, waited);
+				logger::info("Player physics: {} skin bone(s) of the physics' shapes are unset ({:.0f} s after the 3D loaded); filling them from the NIF", g_unresolved, waited);
 			} else if (!candidates.empty()) {
 				logger::info("Player physics: all skin bones set ({:.0f} s after the 3D loaded)", waited);
 			}
@@ -661,6 +693,21 @@ namespace FO4SMP::PlayerPhysics
 
 				hdt::DefaultBBP::PhysicsFile_t file{ c.file, {} };
 				hdt::Fo4SystemCreator creator;
+				{
+					// The shapes under the model with null skin bones.
+					std::vector<std::string> shapes;
+					for (const auto& [shape, count] : g_unresolvedShapes) {
+						if (IsAttachedUnder(shape, c.model)) {
+							shapes.emplace_back(shape->name.c_str());
+						}
+					}
+					if (!shapes.empty()) {
+						creator.m_nifBoneNames = NifBoneNames(c.file, shapes);
+						if (!creator.m_nifBoneNames) {
+							logger::warn("Player physics: no NIF found with bone lists for the {} shape(s) with null skin bones; their collision will be wrong", shapes.size());
+						}
+					}
+				}
 				const auto start = std::chrono::steady_clock::now();
 				auto system = creator.createOrUpdateSystem(skeleton, c.model, &file, {}, nullptr);
 				const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();

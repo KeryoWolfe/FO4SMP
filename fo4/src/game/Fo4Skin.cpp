@@ -214,3 +214,160 @@ namespace hdt::fo4
 		return {};
 	}
 }
+
+namespace hdt::fo4
+{
+	namespace
+	{
+		struct NifReader
+		{
+			std::string_view data;
+			std::size_t pos = 0;
+			bool ok = true;
+
+			template <class T>
+			T Get()
+			{
+				T value{};
+				if (pos + sizeof(T) > data.size()) {
+					ok = false;
+					return value;
+				}
+				std::memcpy(&value, data.data() + pos, sizeof(T));
+				pos += sizeof(T);
+				return value;
+			}
+
+			std::string Bytes(std::size_t a_count)
+			{
+				if (pos + a_count > data.size()) {
+					ok = false;
+					return {};
+				}
+				std::string s{ data.substr(pos, a_count) };
+				pos += a_count;
+				return s;
+			}
+
+			std::string SizedString() { return Bytes(Get<std::uint32_t>()); }
+			void ExportString() { Bytes(Get<std::uint8_t>()); }
+		};
+	}
+
+	std::string ReadNifSkinBoneNames(std::string_view a_data, std::unordered_map<std::string, std::vector<std::string>>& a_out)
+	{
+		a_out.clear();
+		NifReader r{ a_data };
+
+		// Header (nif.xml, 20.2.0.7 / Bethesda stream header).
+		const auto eol = a_data.find('\n');
+		if (eol == std::string_view::npos || !a_data.starts_with("Gamebryo File Format")) {
+			return "not a NIF";
+		}
+		r.pos = eol + 1;
+		const auto version = r.Get<std::uint32_t>();
+		if (version != 0x14020007) {
+			return std::format("NIF version {:08X}, expected 14020007", version);
+		}
+		r.Get<std::uint8_t>();  // endian
+		const auto userVersion = r.Get<std::uint32_t>();
+		const auto numBlocks = r.Get<std::uint32_t>();
+		if (userVersion < 3) {
+			return std::format("user version {}, expected a Bethesda stream header", userVersion);
+		}
+		const auto bsVersion = r.Get<std::uint32_t>();
+		r.ExportString();  // author
+		if (bsVersion > 130) {
+			r.Get<std::uint32_t>();
+		} else {
+			r.ExportString();  // process script
+		}
+		r.ExportString();  // export script
+		if (bsVersion >= 103) {
+			r.ExportString();  // max filepath
+		}
+		const auto numTypes = r.Get<std::uint16_t>();
+		std::vector<std::string> types(numTypes);
+		for (auto& t : types) {
+			t = r.SizedString();
+		}
+		std::vector<std::uint16_t> typeIndex(numBlocks);
+		for (auto& t : typeIndex) {
+			t = r.Get<std::uint16_t>() & 0x7FFF;
+		}
+		std::vector<std::uint32_t> sizes(numBlocks);
+		for (auto& s : sizes) {
+			s = r.Get<std::uint32_t>();
+		}
+		const auto numStrings = r.Get<std::uint32_t>();
+		r.Get<std::uint32_t>();  // max string length
+		std::vector<std::string> strings(numStrings);
+		for (auto& s : strings) {
+			s = r.SizedString();
+		}
+		const auto numGroups = r.Get<std::uint32_t>();
+		for (std::uint32_t i = 0; i < numGroups && r.ok; ++i) {
+			r.Get<std::uint32_t>();
+		}
+		if (!r.ok) {
+			return "truncated header";
+		}
+
+		// Block offsets, then the pieces we need.
+		std::vector<std::size_t> offsets(numBlocks);
+		std::size_t at = r.pos;
+		for (std::uint32_t i = 0; i < numBlocks; ++i) {
+			offsets[i] = at;
+			at += sizes[i];
+		}
+		if (at > a_data.size()) {
+			return "block sizes run past the end of the file";
+		}
+		auto typeOf = [&](std::int32_t a_block) -> std::string_view {
+			return a_block >= 0 && static_cast<std::uint32_t>(a_block) < numBlocks && typeIndex[a_block] < types.size() ? std::string_view{ types[typeIndex[a_block]] } : std::string_view{};
+		};
+		auto nameOf = [&](std::int32_t a_block) -> std::string {  // NiObjectNET::name, the first field
+			if (a_block < 0 || static_cast<std::uint32_t>(a_block) >= numBlocks || sizes[a_block] < 4) {
+				return {};
+			}
+			std::uint32_t index;
+			std::memcpy(&index, a_data.data() + offsets[a_block], 4);
+			return index < strings.size() ? strings[index] : std::string{};
+		};
+
+		for (std::uint32_t i = 0; i < numBlocks; ++i) {
+			const auto type = typeOf(static_cast<std::int32_t>(i));
+			if (type != "BSTriShape"sv && type != "BSSubIndexTriShape"sv && type != "BSDynamicTriShape"sv && type != "BSMeshLODTriShape"sv) {
+				continue;
+			}
+			// NiObjectNET: name, extra data list, controller; NiAVObject: flags, translation, rotation, scale,
+			// collision; BSTriShape: bounding sphere, then the skin reference.
+			NifReader s{ a_data.substr(offsets[i], sizes[i]) };
+			s.Get<std::uint32_t>();
+			const auto numExtra = s.Get<std::uint32_t>();
+			s.pos += 4ull * numExtra;
+			s.pos += 4;            // controller
+			s.pos += 4 + 12 + 36 + 4 + 4;  // flags, translation, rotation, scale, collision
+			s.pos += 16;           // bounding sphere
+			const auto skinRef = s.Get<std::int32_t>();
+			if (!s.ok || typeOf(skinRef) != "BSSkin::Instance"sv) {
+				continue;
+			}
+			NifReader k{ a_data.substr(offsets[skinRef], sizes[skinRef]) };
+			k.Get<std::int32_t>();  // target
+			k.Get<std::int32_t>();  // bone data
+			const auto numBones = k.Get<std::uint32_t>();
+			if (!k.ok || numBones > 1024) {
+				continue;
+			}
+			std::vector<std::string> names(numBones);
+			for (auto& n : names) {
+				n = nameOf(k.Get<std::int32_t>());
+			}
+			if (k.ok) {
+				a_out[nameOf(static_cast<std::int32_t>(i))] = std::move(names);
+			}
+		}
+		return a_out.empty() ? "no skinned shapes found" : std::string{};
+	}
+}

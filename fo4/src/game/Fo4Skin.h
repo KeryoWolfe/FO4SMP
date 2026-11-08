@@ -39,3 +39,12 @@ namespace hdt::fo4
 	// Fills a_out from a_shape. Returns "" on success, or why the shape can't be read.
 	std::string ReadSkinnedShape(RE::BSTriShape* a_shape, SkinnedShape& a_out, bool a_withTriangles);
 }
+
+namespace hdt::fo4
+{
+	// The skin bone names of each skinned shape in a Fallout 4 NIF (version 20.2.0.7, BS version 130), in the
+	// order of the shape's BSSkin::Instance bone list: shape name -> bone names. Used for the shapes whose
+	// bone entries the game leaves null at runtime (A-Body's Virtual* collision shapes). Returns "" on
+	// success, or why the file couldn't be read. a_data is the whole file.
+	std::string ReadNifSkinBoneNames(std::string_view a_data, std::unordered_map<std::string, std::vector<std::string>>& a_out);
+}

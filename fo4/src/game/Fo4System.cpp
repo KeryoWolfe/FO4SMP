@@ -687,6 +687,31 @@ namespace hdt
 				continue;
 			}
 
+			// Fallout 4: fill the null bone entries from the NIF's bone names (A-Body's Virtual* shapes).
+			if (m_nifBoneNames && skinned.unresolved) {
+				if (const auto nifNames = m_nifBoneNames->find(std::string{ meshName }); nifNames != m_nifBoneNames->end() && nifNames->second.size() == skinned.bones.size()) {
+					std::uint32_t found = 0, missing = 0;
+					for (std::size_t b = 0; b < skinned.bones.size(); ++b) {
+						if (skinned.bones[b].node) {
+							continue;
+						}
+						if (auto* node = findObjectByName(RE::BSFixedString(nifNames->second[b].c_str()))) {
+							skinned.bones[b].node = node;
+							++found;
+						} else {
+							++missing;
+							logger::warn("Shape {}: skin bone '{}' (from the NIF) isn't in the skeleton", meshName, nifNames->second[b]);
+						}
+					}
+					skinned.resolvedFromWorld += found;
+					skinned.unresolved = missing;
+					logger::info("Shape {}: {} null skin bone(s) found by their NIF names, {} not found", meshName, found, missing);
+				} else {
+					logger::warn("Shape {}: {} null skin bone(s), and the NIF has {} for it", meshName, skinned.unresolved,
+						nifNames == m_nifBoneNames->end() ? std::string{ "no bone list" } : std::format("{} bones (the game has {})", nifNames->second.size(), skinned.bones.size()));
+				}
+			}
+
 			// Fallout 4: each bone's bounding sphere, in bone space, from the vertices it weighs (skinToBone *
 			// position). FSMP uses the skin data's sphere, which in Skyrim is in bone space; BSSkin::BoneData's
 			// sphere is compared below and logged, and the sphere computed here is used either way, so the

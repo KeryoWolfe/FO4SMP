@@ -53,6 +53,10 @@ namespace hdt
 
 		RE::BSTSmartPointer<Fo4System> createOrUpdateSystem(RE::NiNode* skeleton, RE::NiAVObject* model, DefaultBBP::PhysicsFile_t* file, std::unordered_map<RE::BSFixedString, RE::BSFixedString>&& renameMap, Fo4System* old_system);
 
+		// Fallout 4: skin bone names per shape, read from the outfit's NIF (fo4::ReadNifSkinBoneNames), for the
+		// bone entries the game leaves null in shapes it doesn't draw. Optional; must outlive the build.
+		const std::unordered_map<std::string, std::vector<std::string>>* m_nifBoneNames = nullptr;
+
 	protected:
 		// O(1) bone lookup index. These are just to speed up the hashmap more since BSStrings are pooled
 		struct PooledStringHash
