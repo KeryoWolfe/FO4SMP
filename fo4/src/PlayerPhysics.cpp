@@ -123,8 +123,32 @@ namespace FO4SMP::PlayerPhysics
 					continue;
 				}
 				std::vector<hdt::btMatrix4x3T> toWorld;
+				// From the bone nodes' world transforms (FSMP's m_currentTransform of kinematic bones is left in
+				// the step's translation-offset frame).
 				for (auto& sb : body->m_skinnedBones) {
-					toWorld.push_back(hdt::btMatrix4x3T(sb.ptr->m_currentTransform) * sb.vertexToBone);
+					toWorld.push_back(hdt::btMatrix4x3T(hdt::convertNi(static_cast<hdt::Fo4Bone*>(sb.ptr)->m_node->world)) * sb.vertexToBone);
+				}
+				// Dominant bone per vertex: which bones carry this body's vertices.
+				{
+					std::unordered_map<std::string, int> dominant;
+					for (const auto& v : body->m_vertices) {
+						int best = 0;
+						for (int k = 1; k < 4; ++k) {
+							if (v.m_weight[k] > v.m_weight[best]) {
+								best = k;
+							}
+						}
+						if (v.m_boneIdx[best] < body->m_skinnedBones.size()) {
+							++dominant[body->m_skinnedBones[v.m_boneIdx[best]].ptr->m_name.c_str()];
+						}
+					}
+					std::vector<std::pair<std::string, int>> top(dominant.begin(), dominant.end());
+					std::ranges::sort(top, [](const auto& a, const auto& b) { return a.second > b.second; });
+					std::string list;
+					for (std::size_t i = 0; i < top.size() && i < 6; ++i) {
+						list += std::format("{}{} {}", i ? ", " : "", top[i].first, top[i].second);
+					}
+					logger::info("  body {}: vertices mostly on {}", body->m_name.c_str(), list);
 				}
 				const btVector3 big(1e30f, 1e30f, 1e30f);
 				btVector3 sum(0, 0, 0), lo = big, hi = -big, skinLo = big, skinHi = -big;
