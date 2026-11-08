@@ -49,6 +49,18 @@ namespace FO4SMP::Offsets
 	// (2690919) isn't in Address Library 1.11.240.
 	inline constexpr REL::ID PlayerCharacter_Singleton{ 2698073 };
 
+	// Armor attach (milestone 4). BipedAnim::ApplySkinnedObjects calls BipedAnim::AttachSkinnedObject from two
+	// places (1.11.240: +0x35DDB2 and +0x35DDDB, inside a chained chunk of the function); both are `call rel32`.
+	// FO4SMP hooks those calls, not the function: LooksMenu (f4ee.dll) detours the function itself, and a call
+	// site hook calls through whatever is there. Signature from F4SE 1.11.240's GameFormComponents.h (same
+	// address, 0x0035E960): NiNode* AttachSkinnedObject(BipedAnim*, NiNode* objectRoot, NiNode* parent,
+	// UInt32 bipedIndex, bool firstPerson); checked against both call sites (rdx object, r8 parent or null,
+	// r9d index, byte on the stack).
+	inline constexpr REL::ID        BipedAnimApplySkinnedObjects{ 2194381 };
+	inline constexpr std::ptrdiff_t BipedAnimApplySkinnedObjects_AttachCall1 = 0x35DDB2 - 0x35DC20;
+	inline constexpr std::ptrdiff_t BipedAnimApplySkinnedObjects_AttachCall2 = 0x35DDDB - 0x35DC20;
+	inline constexpr REL::ID        BipedAnimAttachSkinnedObject{ 2194388 };
+
 	struct Function
 	{
 		std::string_view              name;

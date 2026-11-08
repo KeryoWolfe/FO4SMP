@@ -7,6 +7,7 @@
 // physics world every frame and logs its timing. Nothing is attached to actors yet.
 
 #include "AddressCheck.h"
+#include "AttachHook.h"
 #include "Config.h"
 #include "Console.h"
 #include "FrameHook.h"
@@ -147,6 +148,7 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 	if (g_addresses.Passed()) {
 		logger::info("Address check passed");
 		FO4SMP::FrameHook::Install();
+		FO4SMP::AttachHook::Install();
 	} else {
 		logger::error("Address check failed; no hooks installed on this runtime.");
 	}

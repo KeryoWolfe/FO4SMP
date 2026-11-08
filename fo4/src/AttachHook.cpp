@@ -1,0 +1,158 @@
+#include "AttachHook.h"
+
+#include "Offsets.h"
+#include "game/Fo4NiUtils.h"
+
+namespace FO4SMP::AttachHook
+{
+	namespace
+	{
+		using Attach_t = RE::NiNode*(void* a_biped, RE::NiNode* a_object, RE::NiNode* a_parent, std::uint32_t a_bipedIndex, bool a_firstPerson);
+
+		Attach_t* g_original1 = nullptr;
+		Attach_t* g_original2 = nullptr;
+		bool      g_installed = false;
+
+		std::mutex          g_lock;
+		std::vector<Attach> g_recent;  // newest last; bounded
+		constexpr std::size_t kMaxRecent = 256;
+		int g_logged = 0;
+		constexpr int kMaxLogged = 300;
+
+		// BipedAnim (CommonLibF4 TESObjectREFRs.h, 0x1E58; matches F4SE): root at +0x08, BIPOBJECT[44] at +0x10
+		// (0x58 each; TESModel* part at +0x20 in each). Read raw so a layout mismatch can't call into anything.
+		constexpr std::size_t kBipedObjects = 44;
+		constexpr std::size_t kBipObjectSize = 0x58;
+
+		std::string ModelPath(void* a_biped, std::uint32_t a_index)
+		{
+			if (!a_biped || a_index >= kBipedObjects) {
+				return {};
+			}
+			const auto base = reinterpret_cast<std::uintptr_t>(a_biped) + 0x10 + a_index * kBipObjectSize;
+			const auto part = *reinterpret_cast<const RE::TESModel* const*>(base + 0x20);
+			if (!part) {
+				return {};
+			}
+			const char* model = part->model.c_str();
+			return model ? std::string{ model } : std::string{};
+		}
+
+		void ActorOf(void* a_biped, std::uintptr_t& a_actor, std::uint32_t& a_formID)
+		{
+			a_actor = 0;
+			a_formID = 0;
+			if (!a_biped) {
+				return;
+			}
+			const auto* root = *reinterpret_cast<RE::NiAVObject* const*>(reinterpret_cast<std::uintptr_t>(a_biped) + 0x08);
+			if (!root) {
+				return;
+			}
+			const auto user = root->userData;  // NiAVObject +0x110: the owning reference for an actor's 3D root
+			if (user && hdt::fo4::IsKindOf(reinterpret_cast<const void*>(user), ".?AVTESObjectREFR@@"sv)) {
+				a_actor = user;
+				a_formID = *reinterpret_cast<const std::uint32_t*>(user + 0x14);  // TESForm::formID
+			}
+		}
+
+		RE::NiNode* OnAttach(Attach_t* a_original, void* a_biped, RE::NiNode* a_object, RE::NiNode* a_parent, std::uint32_t a_bipedIndex, bool a_firstPerson)
+		{
+			Attach info;
+			info.bipedIndex = a_bipedIndex;
+			info.firstPerson = a_firstPerson;
+			// Read what the object carries before the game merges it into the skeleton.
+			if (a_object) {
+				info.objectName = a_object->name.c_str() ? a_object->name.c_str() : "";
+				info.physicsXml = std::string{ hdt::fo4::StringExtraData(a_object, "HDT Skinned Mesh Physics Object"sv) };
+			}
+			info.model = ModelPath(a_biped, a_bipedIndex);
+			ActorOf(a_biped, info.actor, info.formID);
+
+			auto* result = a_original(a_biped, a_object, a_parent, a_bipedIndex, a_firstPerson);
+			info.attached = result;
+
+			std::scoped_lock guard{ g_lock };
+			if (g_logged < kMaxLogged) {
+				++g_logged;
+				logger::info("Attach: actor {:08X}{} slot {}{}: '{}' model '{}'{}{} -> {}",
+					info.formID, info.actor ? "" : " (unknown)", a_bipedIndex, a_firstPerson ? " (1st person)" : "",
+					info.objectName, info.model,
+					info.physicsXml.empty() ? "" : ", physics ",
+					info.physicsXml,
+					result ? std::string{ result->name.c_str() ? result->name.c_str() : "" } : std::string{ "nothing" });
+				if (g_logged == kMaxLogged) {
+					logger::info("Attach: {} attaches logged; not logging more", kMaxLogged);
+				}
+			}
+			g_recent.push_back(std::move(info));
+			if (g_recent.size() > kMaxRecent) {
+				g_recent.erase(g_recent.begin());
+			}
+			return result;
+		}
+
+		RE::NiNode* Hook1(void* a_biped, RE::NiNode* a_object, RE::NiNode* a_parent, std::uint32_t a_bipedIndex, bool a_firstPerson)
+		{
+			return OnAttach(g_original1, a_biped, a_object, a_parent, a_bipedIndex, a_firstPerson);
+		}
+
+		RE::NiNode* Hook2(void* a_biped, RE::NiNode* a_object, RE::NiNode* a_parent, std::uint32_t a_bipedIndex, bool a_firstPerson)
+		{
+			return OnAttach(g_original2, a_biped, a_object, a_parent, a_bipedIndex, a_firstPerson);
+		}
+
+		// The call at a_offset in ApplySkinnedObjects: true if it is a `call rel32`; logs where it points.
+		bool CheckSite(std::uintptr_t a_site, const char* a_label)
+		{
+			const auto* code = reinterpret_cast<const std::uint8_t*>(a_site);
+			const auto base = REL::Module::get().base();
+			if (code[0] != 0xE8) {
+				logger::error("Attach hook: {} (+{:07X}) isn't a call (starts {:02X}); not installed", a_label, a_site - base, code[0]);
+				return false;
+			}
+			std::int32_t rel;
+			std::memcpy(&rel, code + 1, sizeof(rel));
+			const auto target = a_site + 5 + rel;
+			if (target != Offsets::BipedAnimAttachSkinnedObject.address()) {
+				logger::warn("Attach hook: {} (+{:07X}) calls +{:X}, not AttachSkinnedObject: another plugin hooked the call; FO4SMP calls it in turn",
+					a_label, a_site - base, target - base);
+			}
+			return true;
+		}
+	}
+
+	bool Install()
+	{
+		const REL::Relocation<std::uintptr_t> site1{ Offsets::BipedAnimApplySkinnedObjects, Offsets::BipedAnimApplySkinnedObjects_AttachCall1 };
+		const REL::Relocation<std::uintptr_t> site2{ Offsets::BipedAnimApplySkinnedObjects, Offsets::BipedAnimApplySkinnedObjects_AttachCall2 };
+		if (!CheckSite(site1.address(), "ApplySkinnedObjects' first attach call") || !CheckSite(site2.address(), "ApplySkinnedObjects' second attach call")) {
+			return false;
+		}
+		F4SE::AllocTrampoline(2 * 14);
+		auto& trampoline = F4SE::GetTrampoline();
+		g_original1 = reinterpret_cast<Attach_t*>(trampoline.write_call<5>(site1.address(), &Hook1));
+		g_original2 = reinterpret_cast<Attach_t*>(trampoline.write_call<5>(site2.address(), &Hook2));
+		g_installed = true;
+		const auto base = REL::Module::get().base();
+		logger::info("Attach hook: installed at ApplySkinnedObjects' two calls to AttachSkinnedObject (+{:07X}, +{:07X})", site1.address() - base, site2.address() - base);
+		return true;
+	}
+
+	bool Installed()
+	{
+		return g_installed;
+	}
+
+	bool FindByAttachedNode(RE::NiAVObject* a_node, Attach& a_out)
+	{
+		std::scoped_lock guard{ g_lock };
+		for (auto it = g_recent.rbegin(); it != g_recent.rend(); ++it) {
+			if (it->attached == a_node) {
+				a_out = *it;
+				return true;
+			}
+		}
+		return false;
+	}
+}

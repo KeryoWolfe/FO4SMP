@@ -67,6 +67,8 @@ add_library(
 	src/main.cpp
 	src/AddressCheck.cpp
 	src/AddressCheck.h
+	src/AttachHook.cpp
+	src/AttachHook.h
 	src/Config.cpp
 	src/Config.h
 	src/Console.cpp
