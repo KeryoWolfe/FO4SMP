@@ -985,6 +985,7 @@ namespace hdt
 				}
 			}
 
+			m_unknownSkinBones += static_cast<int>(skinned.unresolved);
 			logger::info("Shape {} for {}: {} bones ({} found through their world transform, {} unknown), {} vertices ({} precision)", meshName, name,
 				skinned.bones.size(), skinned.resolvedFromWorld, skinned.unresolved, skinned.vertices.size(), skinned.fullPrecision ? "full" : "half");
 

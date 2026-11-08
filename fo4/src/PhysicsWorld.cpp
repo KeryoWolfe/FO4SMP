@@ -1,5 +1,7 @@
 #include "PhysicsWorld.h"
 
+#include "hdtSkinnedMesh/hdtDispatcher.h"
+
 #include "GlobalConfig.h"
 #include "game/Fo4ConvertNi.h"
 #include "game/Fo4Settings.h"
@@ -30,7 +32,19 @@ namespace FO4SMP
 	void PhysicsWorld::solveConstraints(btContactSolverInfo& a_solverInfo)
 	{
 		++_substeps;
-		hdt::SkinnedMeshWorld::solveConstraints(a_solverInfo);
+		if (!m_collisionObjects.size()) {
+			return;
+		}
+		// SkinnedMeshWorld::solveConstraints, inlined so the contacts can be read after the solve (it clears the
+		// manifolds at its end; run 34's snapshots read them after that and found none).
+		for (int i = 0; i < m_constraints.size(); i++) {
+			btTypedConstraint* constraint = m_constraints[i];
+			if (constraint->isEnabled() && constraint->getRigidBodyA().isStaticOrKinematicObject() &&
+				constraint->getRigidBodyB().isStaticOrKinematicObject()) {
+				constraint->setEnabled(false);
+			}
+		}
+		btDiscreteDynamicsWorldMt::solveConstraints(a_solverInfo);
 		// After solving, so each point's applied impulse is known.
 		auto* dispatcher = getCollisionWorld()->getDispatcher();
 		for (int i = 0; i < dispatcher->getNumManifolds(); ++i) {
@@ -59,6 +73,8 @@ namespace FO4SMP
 				step.maxImpulse = std::max(step.maxImpulse, point.getAppliedImpulse());
 			}
 		}
+		// As SkinnedMeshWorld: the HDT manifolds are recreated every substep; clear them to prevent stale data.
+		static_cast<hdt::CollisionDispatcher*>(m_dispatcher1)->clearAllManifold();
 	}
 
 	std::string PhysicsWorld::StepContactsInvolving(const std::set<std::string>& a_bones) const

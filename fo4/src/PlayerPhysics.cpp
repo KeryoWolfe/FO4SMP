@@ -82,6 +82,7 @@ namespace FO4SMP::PlayerPhysics
 		// NPCs whose physics keeps exploding first lose their collisions (the chains still hang and jiggle; a corpse's
 		// penis then hangs instead of standing out); if they still explode, they are only placed for a while.
 		std::unordered_map<std::uint32_t, std::chrono::steady_clock::time_point> g_noCollision;  // until
+		std::unordered_set<std::uint32_t> g_unsimulatable;  // NPCs whose skeleton lacks the body's bones (armor racks): placed only
 
 
 		// Fallout 4: the skins of shapes the game doesn't draw (A-Body's Virtual* collision shapes) start with
@@ -121,6 +122,15 @@ namespace FO4SMP::PlayerPhysics
 			S().restOrder.clear();
 			S().follow.clear();
 			S().rootBone = nullptr;
+		}
+
+		void ClearPlacement()
+		{
+			S().rest.clear();
+			S().restOrder.clear();
+			S().follow.clear();
+			S().rootBone = nullptr;
+			S().placed = false;
 		}
 
 		bool IsAttachedUnder(RE::NiAVObject* a_object, RE::NiAVObject* a_root)
@@ -927,6 +937,19 @@ namespace FO4SMP::PlayerPhysics
 					continue;
 				}
 
+				// An NPC whose skeleton lacks the body's skin bones (DLC05 armor racks: their skeleton has none of the
+				// *_skin bones A-Body and TWB hang their SMP bones from) can't be simulated: its chains have nothing to
+				// hang from and explode even without collisions (run 35). Keep it placed instead.
+				if (!S().isPlayer && creator.m_unknownSkinBones > 0) {
+					logger::info("{}: {} skin bone(s) of {}'s shapes aren't in this skeleton (an armor rack?); not simulated, placed only", Label(),
+						creator.m_unknownSkinBones, c.file);
+					g_unsimulatable.insert(S().formID);
+					S().simulate = false;
+					S().root = nullptr;
+					ClearPlacement();
+					return;
+				}
+
 				std::size_t dynamic = 0;
 				for (auto& bone : system->getBones()) {
 					dynamic += bone->m_rig.isStaticOrKinematicObject() ? 0 : 1;
@@ -953,15 +976,6 @@ namespace FO4SMP::PlayerPhysics
 
 	namespace
 	{
-		void ClearPlacement()
-		{
-			S().rest.clear();
-			S().restOrder.clear();
-			S().follow.clear();
-			S().rootBone = nullptr;
-			S().placed = false;
-		}
-
 		// Placement only (NPCs not simulated): the outfit's added bones hang off Root with an identity local, so a
 		// body with SMP bones collapses (pecs and breasts sink, run 32-33) until something places them. Put each on its
 		// NIF parent with its NIF local and keep it there every frame: the body's rest shape, without physics.
@@ -1285,7 +1299,7 @@ namespace FO4SMP::PlayerPhysics
 					// NPCs crossed the 2,000-unit line or swapped places in the nearest four).
 					const auto it = g_actors.find(a.formID);
 					const bool active = it != g_actors.end() && it->second.simulate;
-					if (!g_quarantined.contains(a.formID) && g_maxActive > 1 && d <= kNpcMaxDistance + (active ? kNpcKeepBonus : 0.0f)) {
+					if (!g_quarantined.contains(a.formID) && !g_unsimulatable.contains(a.formID) && g_maxActive > 1 && d <= kNpcMaxDistance + (active ? kNpcKeepBonus : 0.0f)) {
 						simulate.push_back({ active ? std::max(0.0f, d - kNpcKeepBonus) : d, d, &a });
 					} else if (d <= kPlaceDistance) {
 						place.push_back({ d, d, &a });

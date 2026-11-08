@@ -63,6 +63,10 @@ namespace hdt
 		// bone entries the game leaves null in shapes it doesn't draw. Optional; must outlive the build.
 		const std::unordered_map<std::string, std::vector<std::string>>* m_nifBoneNames = nullptr;
 
+		// Fallout 4: skin bones of the physics' shapes that weren't in the skeleton at all (an armor rack's
+		// skeleton has none of the body's *_skin bones), summed over the build.
+		int m_unknownSkinBones = 0;
+
 	protected:
 		// O(1) bone lookup index. These are just to speed up the hashmap more since BSStrings are pooled
 		struct PooledStringHash
