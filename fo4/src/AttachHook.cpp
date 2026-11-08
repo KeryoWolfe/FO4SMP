@@ -45,14 +45,17 @@ namespace FO4SMP::AttachHook
 			if (!a_biped) {
 				return;
 			}
-			const auto* root = *reinterpret_cast<RE::NiAVObject* const*>(reinterpret_cast<std::uintptr_t>(a_biped) + 0x08);
-			if (!root) {
+			// BipedAnim::actorRef, an ObjectRefHandle (+0x1E50), resolved by the game's own lookup.
+			const auto handle = *reinterpret_cast<const std::uint32_t*>(reinterpret_cast<std::uintptr_t>(a_biped) + 0x1E50);
+			if (!handle) {
 				return;
 			}
-			const auto user = root->userData;  // NiAVObject +0x110: the owning reference for an actor's 3D root
-			if (user && hdt::fo4::IsKindOf(reinterpret_cast<const void*>(user), ".?AVTESObjectREFR@@"sv)) {
-				a_actor = user;
-				a_formID = *reinterpret_cast<const std::uint32_t*>(user + 0x14);  // TESForm::formID
+			using Lookup_t = bool(const std::uint32_t&, RE::NiPointer<RE::TESObjectREFR>&);
+			static REL::Relocation<Lookup_t*> lookup{ Offsets::LookupREFRByHandle };
+			RE::NiPointer<RE::TESObjectREFR> ref;
+			if (lookup(handle, ref) && ref) {
+				a_actor = reinterpret_cast<std::uintptr_t>(ref.get());
+				a_formID = ref->GetFormID();
 			}
 		}
 
@@ -73,16 +76,21 @@ namespace FO4SMP::AttachHook
 			info.attached = result;
 
 			std::scoped_lock guard{ g_lock };
-			if (g_logged < kMaxLogged) {
+			const bool interesting = !info.physicsXml.empty() || info.formID == 0x14;
+			static int s_others = 0;
+			if (g_logged < kMaxLogged && (interesting || s_others < 60)) {
 				++g_logged;
+				if (!interesting) {
+					++s_others;
+				}
 				logger::info("Attach: actor {:08X}{} slot {}{}: '{}' model '{}'{}{} -> {}",
 					info.formID, info.actor ? "" : " (unknown)", a_bipedIndex, a_firstPerson ? " (1st person)" : "",
 					info.objectName, info.model,
 					info.physicsXml.empty() ? "" : ", physics ",
 					info.physicsXml,
-					result ? std::string{ result->name.c_str() ? result->name.c_str() : "" } : std::string{ "nothing" });
+					result ? std::format("'{}'", result->name.c_str() ? result->name.c_str() : "") : std::string{ "nothing" });
 				if (g_logged == kMaxLogged) {
-					logger::info("Attach: {} attaches logged; not logging more", kMaxLogged);
+					logger::info("Attach: {} attaches logged (all with physics, the player's, the first 60 others); not logging more", kMaxLogged);
 				}
 			}
 			g_recent.push_back(std::move(info));

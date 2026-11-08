@@ -61,6 +61,11 @@ namespace FO4SMP::Offsets
 	inline constexpr std::ptrdiff_t BipedAnimApplySkinnedObjects_AttachCall2 = 0x35DDDB - 0x35DC20;
 	inline constexpr REL::ID        BipedAnimAttachSkinnedObject{ 2194388 };
 
+	// bool LookupREFRByHandle(const UInt32& handle, NiPointer<TESObjectREFR>& out): F4SE 1.11.240's
+	// GameHandle.cpp, 0x002A0860 = Address Library 2190940 (reads the handle, masks index 0x1FFFFF and age).
+	// Resolves BipedAnim::actorRef (+0x1E50); the biped root's userData isn't set yet when outfits attach (run 29).
+	inline constexpr REL::ID LookupREFRByHandle{ 2190940 };
+
 	struct Function
 	{
 		std::string_view              name;
@@ -88,6 +93,7 @@ namespace FO4SMP::Offsets
 		Function{ "BipedAnimAttachToParent"sv, 2194378, 1370428, { 0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x10, 0x4C }, true },
 		Function{ "BipedAnimRemovePart"sv, 2194342, 575576, { 0x48, 0x8B, 0xC4, 0x48, 0x89, 0x50, 0x10, 0x48 }, true },
 		Function{ "FirstThirdPersonSwitchEventSource"sv, 2233725, 930195, { 0x48, 0x83, 0xEC, 0x28, 0x65, 0x48, 0x8B, 0x04 }, false },
+		Function{ "LookupREFRByHandle"sv, 2190940, 0, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C }, true },
 		Function{ "LooksMenuUtilsShowLooksMenu"sv, 2223366, 411372, { 0x48, 0x89, 0x5C, 0x24, 0x18, 0x57, 0x48, 0x83 }, true },
 		Function{ "MainOnIdle"sv, 2228917, 633524, { 0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x08, 0x48 }, true },
 		Function{ "Reset3D"sv, 2229913, 302888, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C }, true },
