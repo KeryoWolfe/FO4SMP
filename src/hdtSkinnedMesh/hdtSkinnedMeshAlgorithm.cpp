@@ -415,9 +415,11 @@ namespace hdt
 					// reject it entirely. This prevents the vector cancellation that creates
 					// unpredictable movement, and preserves the depth/weight ratio
 					// [If we get jitter, try removing this]
+#ifndef HDT_ACCUMULATE_OPPOSING_CONTACTS
 					if (c->weight > FLT_EPSILON && c->normal.dot(normScaled) < 0) {
 						continue;
 					}
+#endif
 
 					c->weight += w2;
 					c->normal += normScaled;

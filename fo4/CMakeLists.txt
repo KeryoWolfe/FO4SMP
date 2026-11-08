@@ -107,7 +107,10 @@ target_include_directories(
 )
 
 # As FSMP's build: Bullet's SIMD API (Bullet itself is built with it, see the port), no min/max macros.
-target_compile_definitions("${PROJECT_NAME}" PRIVATE BT_USE_SSE_IN_API NOMINMAX _SILENCE_AMP_DEPRECATION_WARNINGS)
+# HDT_ACCUMULATE_OPPOSING_CONTACTS: FSMP's merge as it was before b102ea8 (May 2026), which A-Body's XML was
+# tuned against: contacts of a bone pair that push opposite ways are summed instead of the later ones being dropped.
+# Suspected of making the penis between the thighs jump from side to side (run 26); FO4 Faster HDT-SMP predates it.
+target_compile_definitions("${PROJECT_NAME}" PRIVATE BT_USE_SSE_IN_API NOMINMAX _SILENCE_AMP_DEPRECATION_WARNINGS HDT_ACCUMULATE_OPPOSING_CONTACTS)
 
 target_link_libraries(
 	"${PROJECT_NAME}"
