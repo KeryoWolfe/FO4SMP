@@ -53,6 +53,8 @@ namespace FO4SMP::PlayerPhysics
 			std::uint32_t formID = 0;
 			std::uint32_t handle = 0;  // the actor's ObjectRefHandle (NPCs), from the attach hook
 			bool isPlayer = false;
+			bool simulate = true;          // false: only the added bones are kept on their NIF parents (no physics)
+			bool placed = false;           // placement-only: done for the current 3D
 			std::uint32_t generation = 0;  // the attach hook's count of this actor's physics attaches at the last build
 
 			RE::NiAVObject* root = nullptr;  // only compared, never dereferenced once stale
@@ -76,6 +78,11 @@ namespace FO4SMP::PlayerPhysics
 		std::string Label() { return !g_current || g_current->isPlayer ? std::string{ "Player physics" } : std::format("NPC {:08X} physics", g_current->formID); }
 
 		std::uint32_t g_systemResets = 0;
+
+		// NPCs whose physics keeps exploding first lose their collisions (the chains still hang and jiggle; a corpse's
+		// penis then hangs instead of standing out); if they still explode, they are only placed for a while.
+		std::unordered_map<std::uint32_t, std::chrono::steady_clock::time_point> g_noCollision;  // until
+
 
 		// Fallout 4: the skins of shapes the game doesn't draw (A-Body's Virtual* collision shapes) start with
 		// null bone entries (run 20: VirtualHands 36 of 38, VirtualArms 18 of 28) and appear to get them
@@ -930,6 +937,12 @@ namespace FO4SMP::PlayerPhysics
 					Console::Print(std::format("FO4SMP: physics on the player from {} ({} bones simulated)", c.file, dynamic));
 				}
 
+				if (!S().isPlayer && g_noCollision.contains(S().formID)) {
+					for (auto& mesh : system->meshes()) {
+						static_cast<hdt::Fo4Body*>(mesh.get())->m_disabled = true;
+					}
+					logger::info("{}: collisions off for this NPC (its physics kept exploding)", Label());
+				}
 				LogCollisionFilter(system.get());
 				BuildFollow(skeleton, system.get());
 				PhysicsWorld::Get()->AddSystem(system.get());
@@ -940,10 +953,48 @@ namespace FO4SMP::PlayerPhysics
 
 	namespace
 	{
+		void ClearPlacement()
+		{
+			S().rest.clear();
+			S().restOrder.clear();
+			S().follow.clear();
+			S().rootBone = nullptr;
+			S().placed = false;
+		}
+
+		// Placement only (NPCs not simulated): the outfit's added bones hang off Root with an identity local, so a
+		// body with SMP bones collapses (pecs and breasts sink, run 32-33) until something places them. Put each on its
+		// NIF parent with its NIF local and keep it there every frame: the body's rest shape, without physics.
+		bool PlaceOnly(RE::NiAVObject* a_root)
+		{
+			auto* skeleton = hdt::castNiNode(a_root);
+			if (!skeleton) {
+				return false;
+			}
+			for (const auto& c : AttachCandidates(a_root)) {
+				const NifInfo* nif = FindNif(c.file, SkinnedShapeNames(c.model), c.nif);
+				if (!nif || nif->nodes.empty()) {
+					continue;
+				}
+				PlaceAddedBonesFromNif(skeleton, *nif);
+			}
+			if (S().restOrder.empty()) {
+				return false;
+			}
+			for (auto* node : S().restOrder) {
+				const auto& rest = S().rest.at(node);
+				S().follow.push_back({ node, rest.anchor, rest.relative });
+			}
+			S().rootBone = hdt::fo4::findNode(skeleton, RE::BSFixedString("Root"));
+			S().placed = S().rootBone != nullptr;
+			return S().placed;
+		}
+
 		int g_maxActive = 5;                       // smp.maximumActiveSkeletons: the player and up to this many minus one NPCs
 		constexpr float kNpcMaxDistance = 2000.0f;  // game units (about 28 m); NPCs farther away aren't simulated
 		constexpr double kSelectSeconds = 1.0;      // how often the simulated NPCs are chosen again
 		constexpr float kNpcKeepBonus = 500.0f;     // selection hysteresis, game units
+		constexpr float kPlaceDistance = 8000.0f;   // NPCs not simulated but this near get their added bones placed
 
 		RE::NiAVObject* RootOf(const ActorState& a_state)
 		{
@@ -1020,10 +1071,19 @@ namespace FO4SMP::PlayerPhysics
 			}
 			for (const auto id : quarantine) {
 				g_current = &g_actors[id];
-				Drop(std::format("exploded more than {} times in {:.0f} s; off for {:.0f} s", kQuarantineResets, kQuarantineWindow, kQuarantineSeconds));
-				g_quarantined[id] = a_now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(kQuarantineSeconds));
+				const auto until = a_now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(kQuarantineSeconds));
+				if (!g_noCollision.contains(id)) {
+					Drop(std::format("exploded more than {} times in {:.0f} s; rebuilding without collisions for {:.0f} s", kQuarantineResets, kQuarantineWindow, kQuarantineSeconds));
+					g_noCollision[id] = until;
+					S().root = nullptr;  // rebuild
+				} else {
+					Drop(std::format("exploded more than {} times in {:.0f} s even without collisions; placed only, for {:.0f} s", kQuarantineResets, kQuarantineWindow, kQuarantineSeconds));
+					g_quarantined[id] = until;
+					S().simulate = false;
+					S().root = nullptr;
+					ClearPlacement();
+				}
 				g_resetTimes.erase(id);
-				g_actors.erase(id);
 			}
 		}
 
@@ -1032,11 +1092,91 @@ namespace FO4SMP::PlayerPhysics
 			return std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(a_seconds));
 		}
 
+		// Diagnostic (run 33): how far a few skeleton bones move per frame, as FO4SMP reads them. The contacts that
+		// fling the penis and the breasts come from kinematic leg and pelvis bones; if their world transforms are
+		// only refreshed every other frame (or late), their speeds come out 0 and then double, and every contact
+		// with them is a hammer blow. Logs every 10 s: per-frame displacement (units) over the last 24 frames.
+		void TrackMotion(RE::NiAVObject* a_root, std::chrono::steady_clock::time_point a_now)
+		{
+			static RE::NiAVObject* s_root = nullptr;
+			static std::array<RE::NiNode*, 4> s_nodes{};
+			static std::array<RE::NiPoint3, 4> s_last{};
+			static std::array<std::vector<float>, 4> s_moves;
+			static int s_frames = 0, s_still[4]{};
+			static auto s_next = a_now + std::chrono::seconds(10);
+			static int s_logged = 0;
+			constexpr std::array kNames{ "Root", "Pelvis", "RLeg_Calf", "Penis_01" };
+			if (a_root != s_root) {
+				s_root = a_root;
+				auto* skeleton = hdt::castNiNode(a_root);
+				for (std::size_t i = 0; i < kNames.size(); ++i) {
+					s_nodes[i] = skeleton ? hdt::fo4::findNode(skeleton, RE::BSFixedString(kNames[i])) : nullptr;
+					s_last[i] = s_nodes[i] ? s_nodes[i]->world.translate : RE::NiPoint3{};
+					s_moves[i].clear();
+					s_still[i] = 0;
+				}
+				s_frames = 0;
+				return;
+			}
+			++s_frames;
+			for (std::size_t i = 0; i < kNames.size(); ++i) {
+				if (!s_nodes[i]) {
+					continue;
+				}
+				const auto& w = s_nodes[i]->world.translate;
+				const float d = std::sqrt((w.x - s_last[i].x) * (w.x - s_last[i].x) + (w.y - s_last[i].y) * (w.y - s_last[i].y) + (w.z - s_last[i].z) * (w.z - s_last[i].z));
+				s_last[i] = w;
+				s_moves[i].push_back(d);
+				if (s_moves[i].size() > 24) {
+					s_moves[i].erase(s_moves[i].begin());
+				}
+				s_still[i] += d == 0.0f ? 1 : 0;
+			}
+			if (a_now >= s_next && s_logged < 30) {
+				s_next = a_now + std::chrono::seconds(10);
+				++s_logged;
+				std::string line;
+				for (std::size_t i = 0; i < kNames.size(); ++i) {
+					if (!s_nodes[i]) {
+						continue;
+					}
+					line += std::format(" {} (unchanged in {} of {} frames):", kNames[i], s_still[i], s_frames);
+					for (float m : s_moves[i]) {
+						line += std::format(" {:.2f}", m);
+					}
+					line += ";";
+					s_still[i] = 0;
+				}
+				s_frames = 0;
+				logger::info("Player motion per frame:{}", line);
+			}
+		}
+
 		// One actor's frame: rebuild on a new physics attach or a new 3D, keep the kinematic added bones on their
 		// NIF parents, build when due, drop what's no longer attached. g_current is a_state.
 		void UpdateActor(ActorState& a_state, RE::NiAVObject* a_root, std::uint32_t a_generation, const hdt::DefaultBBPList& a_defaults, std::chrono::steady_clock::time_point a_now)
 		{
 			g_current = &a_state;
+			if (!S().simulate) {
+				if (a_generation != S().generation || a_root != S().root) {
+					S().generation = a_generation;
+					S().root = a_root;
+					ClearPlacement();
+					S().nextCheck = a_now + Seconds(kScanDelaySeconds);
+					return;
+				}
+				if (!a_root) {
+					return;
+				}
+				if (S().placed) {
+					ApplyFollow();
+				} else if (a_now >= S().nextCheck) {
+					if (!PlaceOnly(a_root)) {
+						S().nextCheck = a_now + Seconds(kRescanSeconds);
+					}
+				}
+				return;
+			}
 			// Milestone 4: a new third-person attach that names physics (outfit change, 3D reload) rebuilds once
 			// the attach settles.
 			if (a_generation != S().generation) {
@@ -1057,6 +1197,9 @@ namespace FO4SMP::PlayerPhysics
 			}
 			if (a_root && !S().built.empty()) {
 				ApplyFollow();  // every frame, before the physics reads the skeleton
+				if (S().isPlayer) {
+					TrackMotion(a_root, a_now);
+				}
 			}
 			if (!a_root || a_now < S().nextCheck) {
 				return;
@@ -1098,11 +1241,18 @@ namespace FO4SMP::PlayerPhysics
 		void SelectNpcs(RE::NiAVObject* a_playerRoot, const std::vector<AttachHook::PhysicsActor>& a_actors, std::chrono::steady_clock::time_point a_now)
 		{
 			std::erase_if(g_quarantined, [&](const auto& e) { return a_now >= e.second; });
-			std::vector<std::pair<float, const AttachHook::PhysicsActor*>> nearby;
-			if (a_playerRoot && g_maxActive > 1) {
+			std::erase_if(g_noCollision, [&](const auto& e) { return a_now >= e.second; });
+			struct Near
+			{
+				float rank;
+				float distance;
+				const AttachHook::PhysicsActor* actor;
+			};
+			std::vector<Near> simulate, place;
+			if (a_playerRoot) {
 				const auto& p = a_playerRoot->world.translate;
 				for (const auto& a : a_actors) {
-					if (a.formID == 0x14 || g_quarantined.contains(a.formID)) {
+					if (a.formID == 0x14) {
 						continue;
 					}
 					auto* root = AttachHook::Loaded3D(a.handle);
@@ -1110,37 +1260,66 @@ namespace FO4SMP::PlayerPhysics
 						continue;
 					}
 					const auto& q = root->world.translate;
-					float d = std::sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) + (p.z - q.z) * (p.z - q.z));
+					const float d = std::sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) + (p.z - q.z) * (p.z - q.z));
 					// Hysteresis: an NPC already simulated keeps its place until it is kNpcKeepBonus farther than
 					// a newcomer, and up to kNpcMaxDistance + kNpcKeepBonus away (run 32: 303 drops and rebuilds as
 					// NPCs crossed the 2,000-unit line or swapped places in the nearest four).
-					const bool active = g_actors.contains(a.formID);
-					if (d <= kNpcMaxDistance + (active ? kNpcKeepBonus : 0.0f)) {
-						nearby.push_back({ active ? std::max(0.0f, d - kNpcKeepBonus) : d, &a });
+					const auto it = g_actors.find(a.formID);
+					const bool active = it != g_actors.end() && it->second.simulate;
+					if (!g_quarantined.contains(a.formID) && g_maxActive > 1 && d <= kNpcMaxDistance + (active ? kNpcKeepBonus : 0.0f)) {
+						simulate.push_back({ active ? std::max(0.0f, d - kNpcKeepBonus) : d, d, &a });
+					} else if (d <= kPlaceDistance) {
+						place.push_back({ d, d, &a });
 					}
 				}
-				std::ranges::sort(nearby, {}, &decltype(nearby)::value_type::first);
-				if (nearby.size() > static_cast<std::size_t>(g_maxActive - 1)) {
-					nearby.resize(g_maxActive - 1);
+				std::ranges::sort(simulate, {}, &Near::rank);
+				if (simulate.size() > static_cast<std::size_t>(std::max(0, g_maxActive - 1))) {
+					// The rest are placed, so their bodies keep their shape.
+					place.insert(place.end(), simulate.begin() + (g_maxActive - 1), simulate.end());
+					simulate.resize(g_maxActive - 1);
 				}
 			}
 
-			std::set<std::uint32_t> chosen;
-			for (const auto& [d, a] : nearby) {
-				chosen.insert(a->formID);
-				if (!g_actors.contains(a->formID)) {
-					auto& state = g_actors[a->formID];
+			std::map<std::uint32_t, bool> chosen;  // form ID -> simulate
+			auto take = [&](const Near& a_near, bool a_simulate) {
+				const auto* a = a_near.actor;
+				chosen[a->formID] = a_simulate;
+				auto [it, added] = g_actors.try_emplace(a->formID);
+				auto& state = it->second;
+				if (added) {
 					state.formID = a->formID;
 					state.handle = a->handle;
 					state.generation = a->generation;
-					logger::info("NPC {:08X} physics: selected (about {:.0f} units from the player)", a->formID, d);
+					state.simulate = a_simulate;
+					if (a_simulate) {
+						logger::info("NPC {:08X} physics: selected (about {:.0f} units from the player){}", a->formID, a_near.distance,
+							g_noCollision.contains(a->formID) ? ", without collisions" : "");
+					}
+				} else if (state.simulate != a_simulate) {
+					g_current = &state;
+					Drop(a_simulate ? "now simulated" : "now only placed (not among the nearest, or quarantined)");
+					ClearPlacement();
+					state.simulate = a_simulate;
+					state.root = nullptr;  // rebuild or re-place
+					if (a_simulate) {
+						logger::info("NPC {:08X} physics: selected (about {:.0f} units from the player){}", a->formID, a_near.distance,
+							g_noCollision.contains(a->formID) ? ", without collisions" : "");
+					}
 				}
+			};
+			for (const auto& n : simulate) {
+				take(n, true);
+			}
+			for (const auto& n : place) {
+				take(n, false);
 			}
 			for (auto it = g_actors.begin(); it != g_actors.end();) {
 				if (!it->second.isPlayer && !chosen.contains(it->first)) {
 					g_current = &it->second;
-					Drop("no longer among the nearest NPCs, too far, or unloaded");
-					logger::info("NPC {:08X} physics: deselected", it->first);
+					Drop("too far or unloaded");
+					if (it->second.simulate) {
+						logger::info("NPC {:08X} physics: deselected", it->first);
+					}
 					it = g_actors.erase(it);
 				} else {
 					++it;
