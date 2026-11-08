@@ -36,6 +36,21 @@ namespace FO4SMP::PlayerPhysics
 			RE::NiTransform relative;
 		};
 		std::unordered_map<RE::NiNode*, Rest> g_rest;
+
+		// Fallout 4: the added bones hang off Root, so the kinematic ones (Penis_01_Offset > Penis_01,
+		// Penis_Balls_01, Anus_00_SMP > Anus_0x...) follow the feet, not the hips: when the pelvis moves in
+		// an animation, the simulated bones tied to them are pulled toward a place the body has left
+		// (run 13: the penis goes rogue while moving). Each frame, before the physics reads the skeleton,
+		// such a subtree is put back where it was relative to the nearest real bone (Penis_Offset,
+		// Pelvis_Rear_skin...). A stopgap until the attach hooks give these bones their real parents.
+		struct Follow
+		{
+			RE::NiNode* node;
+			RE::NiNode* anchor;
+			RE::NiTransform relative;
+		};
+		std::vector<Follow> g_follow;
+		RE::NiNode* g_rootBone = nullptr;
 		std::chrono::steady_clock::time_point g_nextCheck{};
 		bool g_reportedEmpty = false;
 
@@ -67,6 +82,8 @@ namespace FO4SMP::PlayerPhysics
 			logger::info("Player physics: dropped {} system(s) ({})", g_built.size(), a_why);
 			g_built.clear();
 			g_rest.clear();
+			g_follow.clear();
+			g_rootBone = nullptr;
 		}
 
 		bool IsAttachedUnder(RE::NiAVObject* a_object, RE::NiAVObject* a_root)
@@ -400,6 +417,101 @@ namespace FO4SMP::PlayerPhysics
 			}
 		}
 
+		void BuildFollow(RE::NiNode* a_skeleton, hdt::Fo4System* a_system)
+		{
+			auto* rootBone = hdt::fo4::findNode(a_skeleton, RE::BSFixedString("Root"));
+			if (!rootBone) {
+				return;
+			}
+			std::unordered_set<RE::NiAVObject*> kinematic, simulated;
+			for (auto& bone : a_system->getBones()) {
+				auto* b = static_cast<hdt::Fo4Bone*>(bone.get());
+				(b->m_rig.isStaticOrKinematicObject() ? kinematic : simulated).insert(b->m_node.get());
+			}
+			// Real bones (the COM_Offset subtree) as anchor candidates.
+			std::vector<RE::NiNode*> real;
+			std::function<void(RE::NiNode*, int)> collectReal = [&](RE::NiNode* a_node, int a_depth) {
+				if (a_depth > 64) {
+					return;
+				}
+				real.push_back(a_node);
+				for (auto& child : hdt::fo4::Children(a_node)) {
+					if (auto* c = hdt::castNiNode(child.get())) {
+						collectReal(c, a_depth + 1);
+					}
+				}
+			};
+			std::function<bool(RE::NiNode*, int)> holdsKinematic = [&](RE::NiNode* a_node, int a_depth) {
+				if (a_depth > 64) {
+					return false;
+				}
+				if (kinematic.contains(a_node)) {
+					return true;
+				}
+				for (auto& child : hdt::fo4::Children(a_node)) {
+					if (auto* c = hdt::castNiNode(child.get()); c && holdsKinematic(c, a_depth + 1)) {
+						return true;
+					}
+				}
+				return false;
+			};
+			std::vector<RE::NiNode*> roots;
+			for (auto& child : hdt::fo4::Children(rootBone)) {
+				auto* c = hdt::castNiNode(child.get());
+				if (!c) {
+					continue;
+				}
+				if (std::string_view{ c->name.c_str() }.starts_with("COM"sv)) {
+					collectReal(c, 0);
+				} else if (!simulated.contains(c) && holdsKinematic(c, 0)) {
+					roots.push_back(c);
+				}
+			}
+			for (auto* node : roots) {
+				RE::NiNode* anchor = nullptr;
+				float best = 1e30f;
+				for (auto* r : real) {
+					const auto& a = r->world.translate;
+					const auto& b = node->world.translate;
+					const float d = (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z);
+					if (d < best && std::string_view{ r->name.c_str() } != "COM_Offset"sv && std::string_view{ r->name.c_str() } != "COM"sv) {
+						best = d;
+						anchor = r;
+					}
+				}
+				if (!anchor) {
+					continue;
+				}
+				g_follow.push_back({ node, anchor, hdt::fo4::LocalFromWorld(anchor->world, node->world) });
+				logger::info("Player physics: kinematic added bone '{}' (under Root) now follows '{}' ({:.1f} units away)", node->name.c_str(), anchor->name.c_str(), std::sqrt(best));
+			}
+			g_rootBone = rootBone;
+		}
+
+		void ApplyFollow()
+		{
+			if (!g_rootBone) {
+				return;
+			}
+			std::function<void(RE::NiNode*, int)> follow = [&](RE::NiNode* a_parent, int a_depth) {
+				if (a_depth > 64) {
+					return;
+				}
+				for (auto& child : hdt::fo4::Children(a_parent)) {
+					if (auto* c = hdt::castNiNode(child.get())) {
+						c->world = hdt::fo4::Compose(a_parent->world, c->local);
+						follow(c, a_depth + 1);
+					}
+				}
+			};
+			for (const auto& f : g_follow) {
+				const auto world = hdt::fo4::Compose(f.anchor->world, f.relative);
+				f.node->local = hdt::fo4::LocalFromWorld(g_rootBone->world, world);
+				f.node->world = world;
+				follow(f.node, 0);
+			}
+		}
+
 		struct Candidate
 		{
 			RE::NiAVObject* model;
@@ -502,6 +614,7 @@ namespace FO4SMP::PlayerPhysics
 					c.file, ms, system->getBones().size(), dynamic, system->meshes().size());
 				Console::Print(std::format("FO4SMP: physics on the player from {} ({} bones simulated)", c.file, dynamic));
 
+				BuildFollow(skeleton, system.get());
 				PhysicsWorld::Get()->AddSystem(system.get());
 				g_built.push_back({ system, RE::NiPointer<RE::NiAVObject>(c.model), c.file });
 			}
@@ -519,6 +632,9 @@ namespace FO4SMP::PlayerPhysics
 			g_reportedEmpty = false;
 			g_nextCheck = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(kScanDelaySeconds));
 			return;
+		}
+		if (root && !g_built.empty()) {
+			ApplyFollow();  // every frame, before the physics reads the skeleton
 		}
 		if (!root || now < g_nextCheck) {
 			return;
