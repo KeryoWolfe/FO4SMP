@@ -120,6 +120,21 @@ namespace hdt::fo4
 			if (boneNodes[i] && !node) {
 				return std::format("bone {} isn't a node ({})", i, ClassName(boneNodes[i]));
 			}
+			// Fallout 4: for shapes the game doesn't draw (A-Body's Virtual* collision shapes), many entries of
+			// the bone list stay null while the skin's world-transform pointer is filled in (run 19: up to
+			// 1,418 of a shape's vertices had no weight on a known bone). When that pointer is a node's own
+			// world transform (NiAVObject::world, +0x70), that node is the bone.
+			if (!node && worldPointers && worldPointers[i]) {
+				const auto candidate = reinterpret_cast<std::uintptr_t>(worldPointers[i]) - 0x70;
+				if (Plausible(candidate) && IsKindOf(reinterpret_cast<void*>(candidate), ".?AVNiNode@@"sv)) {
+					node = reinterpret_cast<RE::NiNode*>(candidate);
+					++a_out.resolvedFromWorld;
+				} else {
+					++a_out.unresolved;
+				}
+			} else if (!node) {
+				++a_out.unresolved;
+			}
 			if (node && worldPointers && worldPointers[i] != &node->world) {
 				return std::format("bone {} ({}): the skin's world-transform pointer isn't the bone's own", i, node->name.c_str());
 			}

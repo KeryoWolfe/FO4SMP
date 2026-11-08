@@ -806,7 +806,8 @@ namespace hdt
 				}
 			}
 
-			logger::info("Shape {} for {}: {} bones, {} vertices ({} precision)", meshName, name, skinned.bones.size(), skinned.vertices.size(), skinned.fullPrecision ? "full" : "half");
+			logger::info("Shape {} for {}: {} bones ({} found through their world transform, {} unknown), {} vertices ({} precision)", meshName, name,
+				skinned.bones.size(), skinned.resolvedFromWorld, skinned.unresolved, skinned.vertices.size(), skinned.fullPrecision ? "full" : "half");
 
 			vertexOffsetMap.insert({ meshName, vertexStart });
 			boneStart = static_cast<int>(body->m_skinnedBones.size());

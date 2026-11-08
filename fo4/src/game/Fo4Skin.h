@@ -31,6 +31,8 @@ namespace hdt::fo4
 		std::vector<SkinVertex> vertices;
 		std::vector<std::uint16_t> triangles;  // 3 per triangle
 		bool fullPrecision = false;
+		std::uint32_t resolvedFromWorld = 0;  // null bone entries found through the world-transform pointer
+		std::uint32_t unresolved = 0;         // null bone entries left null
 		std::uint64_t vertexDesc = 0;
 	};
 
