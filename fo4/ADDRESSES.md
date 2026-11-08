@@ -55,7 +55,7 @@ Why the earlier search for armor attach failed: in 1.11.240 the function no long
 | What | ID (1.11.240) | 1.11.240 | How it was found |
 |---|---|---|---|
 | `ConsoleLog` singleton (data) | 4797437 | `0x30F83B8` | CommonLibF4's next-gen ID for it, 2690148, is **not in Address Library 1.11.240**. 976 calls to `ConsoleLog::Print` (2248591) and `AddString` (2248593) load `rcx` from this one pointer just before the call. |
-| `ConsoleLog::Print` | 2248591 | `0x103C0C0` | CommonLibF4's ID; present in 1.11.240. |
+| `ConsoleLog::Print` | 2248591 | `0x103C0C0` | CommonLibF4's ID; present in 1.11.240, but here it's the game's **variadic** printf-style print `(log, format, ...)` (it spills rdx/r8/r9 on entry; the game calls it with formats like `Exported Reference: %s(%08x)`). CommonLibF4 declares it as `Print(format, va_list)`, so `PrintLine` passes a `va_list` and prints garbage: the first test showed "5" and four boxes. FO4SMP calls it directly. |
 
 **CommonLibF4 and 1.11.240:** of the 2,720 next-gen IDs CommonLibF4 (`4379567`) names, **305 are missing** from Address Library's 1.11.240 database. Any CommonLibF4 function used here has to be checked first; a missing ID throws when first used. (This may apply to 4Stim too, which uses CommonLibF4.)
 
