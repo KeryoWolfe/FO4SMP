@@ -162,7 +162,7 @@ namespace FO4SMP::PlayerPhysics
 		// is, relative to the nearest real bone of the same shape:
 		//   world(X) = world(R) * skinToBone(R) * skinToBone(X)^-1
 		// and set its local transform from that. A bone is "added" when it hangs off the Root bone (directly
-		// or through other added bones) and isn't COM; only real bones serve as anchors.
+		// or through other added bones) outside COM_Offset / COM; only real bones serve as anchors.
 		void FixAddedBones(RE::NiAVObject* a_model)
 		{
 			struct Shape
@@ -190,11 +190,11 @@ namespace FO4SMP::PlayerPhysics
 			collect(a_model, 0);
 
 			// Added bones hang off the skeleton's Root bone (directly, or under another added bone); the
-			// only real body bone under Root is COM.
+			// real body hangs off Root through COM_Offset > COM.
 			auto isAdded = [](RE::NiNode* a_node) {
 				for (auto* n = a_node; n && n->parent; n = n->parent) {
 					if (std::string_view{ n->parent->name.c_str() } == "Root"sv) {
-						return std::string_view{ n->name.c_str() } != "COM"sv;
+						return !std::string_view{ n->name.c_str() }.starts_with("COM"sv);  // Root > COM_Offset > COM
 					}
 				}
 				return false;
