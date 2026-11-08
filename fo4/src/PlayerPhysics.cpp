@@ -820,7 +820,7 @@ namespace FO4SMP::PlayerPhysics
 						if (Verbose()) logger::info("{}:   shape '{}' ({}): {} bones, {} vertices, {} precision", Label(), shape->name.c_str(), hdt::fo4::ClassName(shape),
 							skinned.bones.size(), skinned.vertices.size(), skinned.fullPrecision ? "full" : "half");
 					} else {
-						logger::info("{}:   shape '{}' ({}): {}", Label(), shape->name.c_str(), hdt::fo4::ClassName(shape), error);
+						if (Verbose()) logger::info("{}:   shape '{}' ({}): {}", Label(), shape->name.c_str(), hdt::fo4::ClassName(shape), error);
 					}
 				}
 				if (auto it = a_defaults.files.find(shape->name.c_str()); it != a_defaults.files.end() && shape->parent) {
@@ -851,7 +851,7 @@ namespace FO4SMP::PlayerPhysics
 
 			const bool log = !S().reportedEmpty;
 			if (log) {
-				logger::info("{}: scanning the player's 3D '{}' ({})", Label(), a_root->name.c_str(), hdt::fo4::ClassName(a_root));
+				logger::info("{}: scanning the 3D '{}' ({})", Label(), a_root->name.c_str(), hdt::fo4::ClassName(a_root));
 			}
 			std::vector<Candidate> candidates;
 			S().unresolvedShapes.clear();
@@ -885,7 +885,7 @@ namespace FO4SMP::PlayerPhysics
 
 			if (candidates.empty()) {
 				if (log) {
-					logger::info("{}: no physics found on the player (no '{}' extra data, no shape named in defaultBBPs.xml); looking again every {} s", Label(),
+					logger::info("{}: no physics found (no '{}' extra data, no shape named in defaultBBPs.xml); looking again every {} s", Label(),
 						kPhysicsExtraData, kRescanSeconds);
 				}
 				S().reportedEmpty = true;
@@ -1017,18 +1017,30 @@ namespace FO4SMP::PlayerPhysics
 			++g_systemResets;
 			std::vector<std::uint32_t> quarantine;
 			for (auto& [id, state] : g_actors) {
-				bool exploded = false;
+				std::set<std::string> explodedBones;
 				for (const auto& b : state.built) {
 					for (auto& bone : b.system->getBones()) {
 						auto* fb = static_cast<hdt::Fo4Bone*>(bone.get());
-						exploded |= fb->m_exploded;
+						if (fb->m_exploded) {
+							explodedBones.insert(fb->m_name.c_str());
+						}
 						fb->m_exploded = false;
 					}
 				}
-				if (!exploded) {
+				if (explodedBones.empty()) {
 					continue;
 				}
 				g_current = &state;
+				// Diagnostic (run 34): what those bones were touching in the step that blew up, with the solver's impulses.
+				static int s_explosionsLogged = 0;
+				if (s_explosionsLogged < 40) {
+					++s_explosionsLogged;
+					std::string names;
+					for (const auto& n : explodedBones) {
+						names += (names.empty() ? "" : ", ") + n;
+					}
+					logger::info("{}: explosion of {}; their contacts in that step:{}", Label(), names, PhysicsWorld::Get()->StepContactsInvolving(explodedBones));
+				}
 				// Bullet disables ("breaks") a constraint whose impulse reaches its breaking threshold (infinite by
 				// default); an exploded step gives infinite impulses, so the joints would stay off for good and the
 				// bones fall freely (run 25). Turn every constraint between a simulated bone and anything back on.
@@ -1256,11 +1268,18 @@ namespace FO4SMP::PlayerPhysics
 						continue;
 					}
 					auto* root = AttachHook::Loaded3D(a.handle);
+					static std::unordered_set<std::uint32_t> s_reported;
 					if (!root) {
+						if (s_reported.size() < 400 && s_reported.insert(a.formID).second) {
+							logger::info("NPC {:08X} physics: seen with a physics attach, but its 3D isn't loaded (handle {:08X})", a.formID, a.handle);
+						}
 						continue;
 					}
 					const auto& q = root->world.translate;
 					const float d = std::sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) + (p.z - q.z) * (p.z - q.z));
+					if (s_reported.size() < 400 && s_reported.insert(a.formID).second) {
+						logger::info("NPC {:08X} physics: seen with a physics attach, 3D '{}' ({}) {:.0f} units from the player", a.formID, root->name.c_str(), hdt::fo4::ClassName(root), d);
+					}
 					// Hysteresis: an NPC already simulated keeps its place until it is kNpcKeepBonus farther than
 					// a newcomer, and up to kNpcMaxDistance + kNpcKeepBonus away (run 32: 303 drops and rebuilds as
 					// NPCs crossed the 2,000-unit line or swapped places in the nearest four).

@@ -13,12 +13,15 @@ namespace FO4SMP::AttachHook
 		Attach_t* g_original2 = nullptr;
 		bool      g_installed = false;
 		std::unordered_map<std::uint32_t, PhysicsActor> g_actors;  // under g_lock
+		// The latest third-person physics attach per actor and biped slot, kept for good (g_recent is bounded, and
+		// with 40 settlers around, Cait's body attach had dropped out of it by the time she was rebuilt indoors, run 34).
+		std::unordered_map<std::uint32_t, std::map<std::uint32_t, Attach>> g_physicsBySlot;  // under g_lock
 
 		std::mutex          g_lock;
 		std::vector<Attach> g_recent;  // newest last; bounded
 		constexpr std::size_t kMaxRecent = 256;
 		int g_logged = 0;
-		constexpr int kMaxLogged = 300;
+		constexpr int kMaxLogged = 1500;
 
 		// BipedAnim (CommonLibF4 TESObjectREFRs.h, 0x1E58; matches F4SE): root at +0x08, BIPOBJECT[44] at +0x10
 		// (0x58 each; TESModel* part at +0x20 in each). Read raw so a layout mismatch can't call into anything.
@@ -85,8 +88,10 @@ namespace FO4SMP::AttachHook
 				actor.formID = info.formID;
 				actor.handle = info.handle;
 				++actor.generation;
+				g_physicsBySlot[info.formID][info.bipedIndex] = info;
 			}
-			const bool interesting = !info.physicsXml.empty() || info.formID == 0x14;
+			static std::set<std::pair<std::uint32_t, std::string>> s_seenPhysics;
+			const bool interesting = (!info.physicsXml.empty() && s_seenPhysics.insert({ info.formID, info.model }).second) || info.formID == 0x14;
 			static int s_others = 0;
 			if (g_logged < kMaxLogged && (interesting || s_others < 60)) {
 				++g_logged;
@@ -100,7 +105,7 @@ namespace FO4SMP::AttachHook
 					info.physicsXml,
 					result ? std::format("'{}' ({})", result->name.c_str() ? result->name.c_str() : "", hdt::fo4::ClassName(result)) : std::string{ "nothing" });
 				if (g_logged == kMaxLogged) {
-					logger::info("Attach: {} attaches logged (all with physics, the player's, the first 60 others); not logging more", kMaxLogged);
+					logger::info("Attach: {} attaches logged (each actor's first of each physics model, the player's, the first 60 others); not logging more", kMaxLogged);
 				}
 			}
 			g_recent.push_back(std::move(info));
@@ -166,8 +171,8 @@ namespace FO4SMP::AttachHook
 	{
 		std::scoped_lock guard{ g_lock };
 		std::vector<Attach> out;
-		for (const auto& a : g_recent) {
-			if (a.formID == a_formID && !a.firstPerson && !a.physicsXml.empty() && a.attached) {
+		if (const auto it = g_physicsBySlot.find(a_formID); it != g_physicsBySlot.end()) {
+			for (const auto& [slot, a] : it->second) {
 				out.push_back(a);
 			}
 		}

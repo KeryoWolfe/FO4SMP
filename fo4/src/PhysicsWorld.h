@@ -43,6 +43,9 @@ namespace FO4SMP
 		// Diagnostic: the bone pairs with the most contacts, and the deepest, since the last call ("" if none).
 		std::string TakeContactReport();
 
+		// The last step's contacts whose bone pair names one of a_bones: "pair n (deepest d, impulse i); ...".
+		std::string StepContactsInvolving(const std::set<std::string>& a_bones) const;
+
 	private:
 		PhysicsWorld();
 
@@ -57,8 +60,10 @@ namespace FO4SMP
 		{
 			std::uint64_t contacts = 0;
 			float deepest = 0.0f;
+			float maxImpulse = 0.0f;  // largest impulse the solver applied at one contact point
 		};
 		std::unordered_map<std::string, PairStats> _pairs;
+		std::unordered_map<std::string, PairStats> _stepPairs;  // the last Step only
 		std::uint64_t _substeps = 0;
 
 		float _timeTick = 1.0f / 60.0f;

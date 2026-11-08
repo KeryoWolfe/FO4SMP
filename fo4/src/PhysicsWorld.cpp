@@ -30,6 +30,8 @@ namespace FO4SMP
 	void PhysicsWorld::solveConstraints(btContactSolverInfo& a_solverInfo)
 	{
 		++_substeps;
+		hdt::SkinnedMeshWorld::solveConstraints(a_solverInfo);
+		// After solving, so each point's applied impulse is known.
 		auto* dispatcher = getCollisionWorld()->getDispatcher();
 		for (int i = 0; i < dispatcher->getNumManifolds(); ++i) {
 			auto* manifold = dispatcher->getManifoldByIndexInternal(i);
@@ -44,13 +46,38 @@ namespace FO4SMP
 			if (b < a) {
 				std::swap(a, b);
 			}
-			auto& stats = _pairs[a + " / " + b];
+			const auto key = a + " / " + b;
+			auto& stats = _pairs[key];
+			auto& step = _stepPairs[key];
 			for (int c = 0; c < manifold->getNumContacts(); ++c) {
+				const auto& point = manifold->getContactPoint(c);
 				++stats.contacts;
-				stats.deepest = std::min(stats.deepest, manifold->getContactPoint(c).getDistance());
+				++step.contacts;
+				stats.deepest = std::min(stats.deepest, point.getDistance());
+				step.deepest = std::min(step.deepest, point.getDistance());
+				stats.maxImpulse = std::max(stats.maxImpulse, point.getAppliedImpulse());
+				step.maxImpulse = std::max(step.maxImpulse, point.getAppliedImpulse());
 			}
 		}
-		hdt::SkinnedMeshWorld::solveConstraints(a_solverInfo);
+	}
+
+	std::string PhysicsWorld::StepContactsInvolving(const std::set<std::string>& a_bones) const
+	{
+		std::vector<std::pair<std::string, PairStats>> found;
+		for (const auto& [key, stats] : _stepPairs) {
+			for (const auto& bone : a_bones) {
+				if (key.find(bone) != std::string::npos) {
+					found.push_back({ key, stats });
+					break;
+				}
+			}
+		}
+		std::ranges::sort(found, [](const auto& x, const auto& y) { return x.second.maxImpulse > y.second.maxImpulse; });
+		std::string out;
+		for (std::size_t i = 0; i < found.size() && i < 8; ++i) {
+			out += std::format(" {} {} (deepest {:.2f}, impulse {:.2f});", found[i].first, found[i].second.contacts, found[i].second.deepest, found[i].second.maxImpulse);
+		}
+		return out.empty() ? std::string{ " none" } : out;
 	}
 
 	std::string PhysicsWorld::TakeContactReport()
@@ -67,7 +94,7 @@ namespace FO4SMP
 		}
 		std::string report = std::format("{} contacts in {} substeps; most:", total, _substeps);
 		for (std::size_t i = 0; i < sorted.size() && i < 6; ++i) {
-			report += std::format(" {} {} (deepest {:.1f});", sorted[i].first, sorted[i].second.contacts, sorted[i].second.deepest);
+			report += std::format(" {} {} (deepest {:.1f}, max impulse {:.2f});", sorted[i].first, sorted[i].second.contacts, sorted[i].second.deepest, sorted[i].second.maxImpulse);
 		}
 		std::ranges::sort(sorted, [](const auto& a, const auto& b) { return a.second.deepest < b.second.deepest; });
 		report += " deepest:";
@@ -125,6 +152,7 @@ namespace FO4SMP
 
 		const auto start = std::chrono::steady_clock::now();
 
+		_stepPairs.clear();
 		readTransform(remainingTimeStep);
 		UpdateActiveState();
 		const auto offset = ApplyTranslationOffset();
