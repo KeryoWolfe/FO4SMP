@@ -154,6 +154,123 @@ namespace FO4SMP::PlayerPhysics
 			}
 		}
 
+		// Fallout 4: bones an outfit adds that the skeleton lacks (A-Body's *_SMP bones, Anus_*, Penis_*...)
+		// are attached under the skeleton with an identity local transform, so they sit on their parent
+		// (run 8: on Root, at the feet) instead of at their place on the body, and the physics is built
+		// from that. (FO4 Faster HDT-SMP hooks BSFlattenedBoneTree's bone creation, likely for this.)
+		// Until the attach hooks (milestone 4), put each such bone where the skin's bind data says it
+		// is, relative to the nearest real bone of the same shape:
+		//   world(X) = world(R) * skinToBone(R) * skinToBone(X)^-1
+		// and set its local transform from that. A bone is "added" when its local transform is the
+		// identity and the bind data puts it more than half a unit away from there.
+		void FixAddedBones(RE::NiAVObject* a_model)
+		{
+			struct Shape
+			{
+				std::string name;
+				hdt::fo4::SkinnedShape skin;
+			};
+			std::vector<Shape> shapes;
+			std::function<void(RE::NiAVObject*, int)> collect = [&](RE::NiAVObject* a_object, int a_depth) {
+				if (!a_object || a_depth > 64) {
+					return;
+				}
+				if (auto* tri = hdt::castBSTriShape(a_object)) {
+					Shape shape{ tri->name.c_str(), {} };
+					if (hdt::fo4::ReadSkinnedShape(tri, shape.skin, false).empty()) {
+						shapes.push_back(std::move(shape));
+					}
+				}
+				if (auto* node = hdt::castNiNode(a_object)) {
+					for (auto& child : hdt::fo4::Children(node)) {
+						collect(child.get(), a_depth + 1);
+					}
+				}
+			};
+			collect(a_model, 0);
+
+			std::unordered_map<RE::NiNode*, int> depth;
+			std::vector<RE::NiNode*> added;
+			for (const auto& shape : shapes) {
+				for (const auto& bone : shape.skin.bones) {
+					if (bone.node && hdt::fo4::IsIdentity(bone.node->local) && !depth.contains(bone.node)) {
+						int d = 0;
+						for (auto* n = bone.node; n; n = n->parent) {
+							++d;
+						}
+						depth[bone.node] = d;
+						added.push_back(bone.node);
+					}
+				}
+			}
+			std::ranges::sort(added, [&](RE::NiNode* a, RE::NiNode* b) { return depth[a] < depth[b]; });
+
+			int fixed = 0;
+			for (auto* node : added) {
+				if (!node->parent) {
+					continue;
+				}
+				// The real bone of the same shape whose bind position is nearest.
+				const RE::NiTransform* bindX = nullptr;
+				const hdt::fo4::SkinBone* best = nullptr;
+				const Shape* bestShape = nullptr;
+				float bestDistance = 1e30f;
+				for (const auto& shape : shapes) {
+					const hdt::fo4::SkinBone* self = nullptr;
+					for (const auto& b : shape.skin.bones) {
+						if (b.node == node) {
+							self = &b;
+						}
+					}
+					if (!self) {
+						continue;
+					}
+					const auto selfBind = hdt::fo4::Inverse(self->skinToBone).translate;
+					for (const auto& b : shape.skin.bones) {
+						if (!b.node || b.node == node || hdt::fo4::IsIdentity(b.node->local)) {
+							continue;
+						}
+						const auto bind = hdt::fo4::Inverse(b.skinToBone).translate;
+						const float dx = bind.x - selfBind.x, dy = bind.y - selfBind.y, dz = bind.z - selfBind.z;
+						const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+						if (distance < bestDistance) {
+							bestDistance = distance;
+							best = &b;
+							bestShape = &shape;
+							bindX = &self->skinToBone;
+						}
+					}
+				}
+				if (!best) {
+					logger::info("Player physics: added bone '{}' has no real bone beside it in any skin; left as it is", node->name.c_str());
+					continue;
+				}
+				const auto world = hdt::fo4::Compose(hdt::fo4::Compose(best->node->world, best->skinToBone), hdt::fo4::Inverse(*bindX));
+				const float dx = world.translate.x - node->world.translate.x, dy = world.translate.y - node->world.translate.y, dz = world.translate.z - node->world.translate.z;
+				const float moved = std::sqrt(dx * dx + dy * dy + dz * dz);
+				if (moved < 0.5f) {
+					continue;
+				}
+				node->local = hdt::fo4::LocalFromWorld(node->parent->world, world);
+				node->world = world;
+				// Children follow (an added bone's children are added bones too: Anus_00_SMP > Anus_01_Offset >
+				// Anus_01); the ones in a skin are placed themselves after this, parents first.
+				std::function<void(RE::NiNode*)> follow = [&](RE::NiNode* a_parent) {
+					for (auto& child : hdt::fo4::Children(a_parent)) {
+						if (auto* c = hdt::castNiNode(child.get())) {
+							c->world = hdt::fo4::Compose(a_parent->world, c->local);
+							follow(c);
+						}
+					}
+				};
+				follow(node);
+				++fixed;
+				logger::info("Player physics: added bone '{}' (parent '{}') moved {:.1f} units to its bind place beside '{}' (shape '{}')",
+					node->name.c_str(), node->parent->name.c_str(), moved, best->node->name.c_str(), bestShape->name);
+			}
+			logger::info("Player physics: {} added bone(s) placed from the bind data ({} with an identity transform checked)", fixed, added.size());
+		}
+
 		struct Candidate
 		{
 			RE::NiAVObject* model;
@@ -236,6 +353,7 @@ namespace FO4SMP::PlayerPhysics
 					continue;
 				}
 				logger::info("Player physics: building {} from {} (model node '{}')", c.file, c.source, c.model->name.c_str());
+				FixAddedBones(c.model);
 
 				hdt::DefaultBBP::PhysicsFile_t file{ c.file, {} };
 				hdt::Fo4SystemCreator creator;

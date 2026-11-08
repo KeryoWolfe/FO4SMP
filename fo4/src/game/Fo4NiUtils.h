@@ -230,6 +230,24 @@ namespace hdt::fo4
 		return r;
 	}
 
+	// The inverse of a transform (Compose(a_t, Inverse(a_t)) is the identity).
+	inline RE::NiTransform Inverse(const RE::NiTransform& a_t)
+	{
+		return LocalFromWorld(a_t, RE::NiTransform{});
+	}
+
+	inline bool IsIdentity(const RE::NiTransform& a_t, float a_eps = 1e-3f)
+	{
+		for (int i = 0; i < 3; ++i) {
+			for (int j = 0; j < 3; ++j) {
+				if (std::abs(a_t.rotate.entry[i][j] - (i == j ? 1.0f : 0.0f)) > a_eps) {
+					return false;
+				}
+			}
+		}
+		return std::abs(a_t.translate.x) < a_eps && std::abs(a_t.translate.y) < a_eps && std::abs(a_t.translate.z) < a_eps && std::abs(a_t.scale - 1.0f) < a_eps;
+	}
+
 	// FSMP's updateTransformUpDown recomputes world transforms below a node through the engine's own
 	// update. Fallout 4: deliberately a no-op. Skeleton bones are driven through BSFlattenedBoneTree, so
 	// the NiNode::local transforms of the skeleton (and of the extra bones an outfit adds, such as A-Body's
