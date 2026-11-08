@@ -780,6 +780,32 @@ namespace hdt
 				}
 			}
 
+			// Fallout 4: weights that don't sum to 1 pull a vertex toward the origin of whatever frame it is
+			// skinned in. Count them, and normalize (FSMP's skinning is a plain weighted sum).
+			{
+				int off = 0, empty = 0;
+				float worst = 0.0f;
+				for (std::size_t j = 0; j < skinned.vertices.size(); ++j) {
+					auto& v = body->m_vertices[j + vertexStart];
+					const float sum = v.m_weight[0] + v.m_weight[1] + v.m_weight[2] + v.m_weight[3];
+					if (sum <= 1e-6f) {
+						++empty;
+						continue;
+					}
+					if (std::abs(sum - 1.0f) > 0.01f) {
+						++off;
+						worst = std::max(worst, std::abs(sum - 1.0f));
+					}
+					for (float& w : v.m_weight) {
+						w /= sum;
+					}
+				}
+				if (off || empty) {
+					logger::info("Shape {}: {} vertices' weights didn't sum to 1 (worst off by {:.3f}; normalized), {} with no weight on a known bone",
+						meshName, off, worst, empty);
+				}
+			}
+
 			logger::info("Shape {} for {}: {} bones, {} vertices ({} precision)", meshName, name, skinned.bones.size(), skinned.vertices.size(), skinned.fullPrecision ? "full" : "half");
 
 			vertexOffsetMap.insert({ meshName, vertexStart });

@@ -154,10 +154,15 @@ namespace FO4SMP::PlayerPhysics
 				btVector3 sum(0, 0, 0), lo = big, hi = -big, skinLo = big, skinHi = -big;
 				for (const auto& v : body->m_vertices) {
 					btVector3 p(0, 0, 0);
+					float sum = 0.0f;
 					for (int k = 0; k < 4; ++k) {
 						if (v.m_weight[k] > 0.0f && v.m_boneIdx[k] < toWorld.size()) {
 							p += (toWorld[v.m_boneIdx[k]] * v.m_skinPos) * v.m_weight[k];
+							sum += v.m_weight[k];
 						}
+					}
+					if (sum > 1e-6f) {
+						p /= sum;  // world coordinates are ~70,000 units from the origin; don't let a short weight sum drag it
 					}
 					const auto r = InFrame(frame, p);
 					const btVector3 q(r.x, r.y, r.z);
