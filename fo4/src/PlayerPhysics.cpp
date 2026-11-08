@@ -75,7 +75,7 @@ namespace FO4SMP::PlayerPhysics
 			std::string source;
 		};
 
-		void Walk(RE::NiAVObject* a_object, const hdt::DefaultBBPList& a_defaults, std::vector<Candidate>& a_out, bool a_log, int a_depth)
+		void Walk(RE::NiAVObject* a_root, RE::NiAVObject* a_object, const hdt::DefaultBBPList& a_defaults, std::vector<Candidate>& a_out, bool a_log, int a_depth)
 		{
 			if (!a_object || a_depth > 64) {
 				return;
@@ -97,13 +97,19 @@ namespace FO4SMP::PlayerPhysics
 					}
 				}
 				if (auto it = a_defaults.files.find(shape->name.c_str()); it != a_defaults.files.end() && shape->parent) {
-					a_out.push_back({ shape->parent, it->second, std::format("defaultBBPs.xml maps shape '{}'", shape->name.c_str()) });
+					// The outfit's node attached to the skeleton root holds all its shapes (the body and the
+					// Virtual* collision shapes); the XML's shapes are looked up under it.
+					RE::NiAVObject* model = shape->parent;
+					while (model->parent && model->parent != a_root) {
+						model = model->parent;
+					}
+					a_out.push_back({ model, it->second, std::format("defaultBBPs.xml maps shape '{}'", shape->name.c_str()) });
 				}
 			}
 
 			if (auto* node = hdt::castNiNode(a_object)) {
 				for (auto& child : hdt::fo4::Children(node)) {
-					Walk(child.get(), a_defaults, a_out, a_log, a_depth + 1);
+					Walk(a_root, child.get(), a_defaults, a_out, a_log, a_depth + 1);
 				}
 			}
 		}
@@ -121,7 +127,7 @@ namespace FO4SMP::PlayerPhysics
 				logger::info("Player physics: scanning the player's 3D '{}' ({})", a_root->name.c_str(), hdt::fo4::ClassName(a_root));
 			}
 			std::vector<Candidate> candidates;
-			Walk(a_root, a_defaults, candidates, log, 0);
+			Walk(a_root, a_root, a_defaults, candidates, log, 0);
 
 			if (candidates.empty()) {
 				if (log) {

@@ -9,9 +9,12 @@
     <remap target="Name"><source priority="1">OtherName</source><requires>Needed</requires></remap>
       treat OtherName as Name before looking the map up
 
-  Only used when nothing on the outfit names its physics with the extra data. Example (A-Body's
-  male body, whose MaleBody.nif names Meshes\A-Body\body\MaleBody.xml in its extra data anyway):
-    <map shape="BaseMaleBody:0Full" file="Meshes\A-Body\body\MaleBody.xml"/>
+  Only used when nothing on the outfit names its physics with the extra data.
+
+  Until the armor attach hook (milestone 4), the extra data on a NIF's root node is lost when the
+  game attaches the outfit to the skeleton, so FO4SMP can't see it: A-Body's male body is mapped
+  here (its MaleBody.nif names this XML). Harmless without A-Body: the shape is never found.
 -->
 <default-bbps>
+	<map shape="BaseMaleBody:0Full" file="Meshes\A-Body\body\MaleBody.xml"/>
 </default-bbps>
