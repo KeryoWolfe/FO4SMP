@@ -69,43 +69,77 @@ namespace FO4SMP::PlayerPhysics
 			return false;
 		}
 
-		// Diagnostic: where each collision body's vertices and each simulated bone are, in the skeleton
-		// root's frame (x right, y forward, z up, game units). A-Body is about 128 units tall.
-		RE::NiPoint3 InRootFrame(const RE::NiTransform& a_root, const btVector3& a_world)
+		// Diagnostic: where each collision body's vertices and each simulated bone are, in the frame of the
+		// skeleton's Root bone (at the feet), computed from the skin data as FSMP's SkinnedMeshBody does.
+		// A-Body is about 128 units tall. Also the raw skin-space box of each body and, for the small
+		// bodies, each skin bone's bind position (skin space) beside its current position (Root frame).
+		RE::NiPoint3 InFrame(const RE::NiTransform& a_frame, const btVector3& a_world)
 		{
 			RE::NiTransform world;
 			world.translate = { a_world.x(), a_world.y(), a_world.z() };
-			return hdt::fo4::LocalFromWorld(a_root, world).translate;
+			return hdt::fo4::LocalFromWorld(a_frame, world).translate;
+		}
+
+		std::string Box(const btVector3& a_lo, const btVector3& a_hi)
+		{
+			return std::format("({:.1f}, {:.1f}, {:.1f}) to ({:.1f}, {:.1f}, {:.1f})", a_lo.x(), a_lo.y(), a_lo.z(), a_hi.x(), a_hi.y(), a_hi.z());
 		}
 
 		void DumpGeometry(const Built& a_built)
 		{
 			auto* system = a_built.system.get();
-			const auto& root = system->m_skeleton->world;
-			logger::info("Geometry of {} in the skeleton root's frame (x right, y forward, z up):", a_built.file);
+			auto* rootBone = hdt::fo4::findNode(system->m_skeleton.get(), RE::BSFixedString("Root"));
+			const auto& frame = rootBone ? rootBone->world : system->m_skeleton->world;
+			logger::info("Geometry of {} in the frame of {} (game units):", a_built.file, rootBone ? "the Root bone" : "the skeleton");
 			for (auto& body : system->meshes()) {
-				if (body->m_vpos.empty()) {
+				if (body->m_vertices.empty()) {
 					continue;
 				}
-				btVector3 sum(0, 0, 0), lo(1e30f, 1e30f, 1e30f), hi(-1e30f, -1e30f, -1e30f);
-				for (const auto& v : body->m_vpos) {
-					const auto p = InRootFrame(root, v.pos());
-					const btVector3 q(p.x, p.y, p.z);
+				std::vector<btMatrix4x3T> toWorld;
+				for (auto& sb : body->m_skinnedBones) {
+					toWorld.push_back(btMatrix4x3T(sb.ptr->m_currentTransform) * sb.vertexToBone);
+				}
+				const btVector3 big(1e30f, 1e30f, 1e30f);
+				btVector3 sum(0, 0, 0), lo = big, hi = -big, skinLo = big, skinHi = -big;
+				for (const auto& v : body->m_vertices) {
+					btVector3 p(0, 0, 0);
+					for (int k = 0; k < 4; ++k) {
+						if (v.m_weight[k] > 0.0f && v.m_boneIdx[k] < toWorld.size()) {
+							p += (toWorld[v.m_boneIdx[k]] * v.m_skinPos) * v.m_weight[k];
+						}
+					}
+					const auto r = InFrame(frame, p);
+					const btVector3 q(r.x, r.y, r.z);
 					sum += q;
 					lo.setMin(q);
 					hi.setMax(q);
+					skinLo.setMin(v.m_skinPos);
+					skinHi.setMax(v.m_skinPos);
 				}
-				sum /= static_cast<float>(body->m_vpos.size());
-				logger::info("  body {}: {} vertices, center ({:.1f}, {:.1f}, {:.1f}), box ({:.1f}, {:.1f}, {:.1f}) to ({:.1f}, {:.1f}, {:.1f})",
-					body->m_name.c_str(), body->m_vpos.size(), sum.x(), sum.y(), sum.z(), lo.x(), lo.y(), lo.z(), hi.x(), hi.y(), hi.z());
+				sum /= static_cast<float>(body->m_vertices.size());
+				logger::info("  body {}: {} vertices, center ({:.1f}, {:.1f}, {:.1f}), box {}; skin-space box {}",
+					body->m_name.c_str(), body->m_vertices.size(), sum.x(), sum.y(), sum.z(), Box(lo, hi), Box(skinLo, skinHi));
+				if (body->m_vertices.size() <= 400) {
+					for (std::size_t i = 0; i < body->m_skinnedBones.size(); ++i) {
+						auto& sb = body->m_skinnedBones[i];
+						auto* bone = static_cast<hdt::Fo4Bone*>(sb.ptr);
+						const auto bind = sb.vertexToBone.toTransform().inverse().getOrigin();
+						const auto& w = bone->m_node->world.translate;
+						const auto now = InFrame(frame, btVector3(w.x, w.y, w.z));
+						const auto& ct = bone->m_currentTransform.getOrigin();
+						logger::info("    bone {}: bind position ({:.1f}, {:.1f}, {:.1f}), now ({:.1f}, {:.1f}, {:.1f}), FSMP's copy {:.1f} units from the node",
+							bone->m_name.c_str(), bind.x(), bind.y(), bind.z(), now.x, now.y, now.z, (ct - btVector3(w.x, w.y, w.z)).length());
+					}
+				}
 			}
 			for (auto& bone : system->getBones()) {
 				auto* b = static_cast<hdt::Fo4Bone*>(bone.get());
-				const auto node = InRootFrame(root, btVector3(b->m_node->world.translate.x, b->m_node->world.translate.y, b->m_node->world.translate.z));
 				if (b->m_rig.isStaticOrKinematicObject()) {
 					continue;
 				}
-				const auto rig = InRootFrame(root, b->m_rig.getWorldTransform().getOrigin());
+				const auto& w = b->m_node->world.translate;
+				const auto node = InFrame(frame, btVector3(w.x, w.y, w.z));
+				const auto rig = InFrame(frame, b->m_rig.getWorldTransform().getOrigin());
 				logger::info("  simulated bone {} (parent '{}'): node ({:.1f}, {:.1f}, {:.1f}), rigid body ({:.1f}, {:.1f}, {:.1f})",
 					b->m_name.c_str(), b->m_node->parent ? b->m_node->parent->name.c_str() : "none", node.x, node.y, node.z, rig.x, rig.y, rig.z);
 			}
