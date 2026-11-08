@@ -18,7 +18,7 @@ namespace hdt
 		// For the frame log: the farthest simulated bone from its parent and the poses rejected by
 		// writeTransform since the last call (all bones), or "".
 		static std::string TakeWriteReport();
-		static constexpr float kMaxDistanceFromParent = 100.0f;  // game units; A-Body is about 128 tall
+		static constexpr float kMaxDistanceFromParent = 500.0f;  // game units; A-Body's are parented to Root, at the feet, and the body is about 128 tall
 
 		int m_depth;
 		RE::NiPointer<RE::NiNode> m_node;

@@ -5,6 +5,7 @@
 #include "PhysicsWorld.h"
 #include "game/Fo4NiUtils.h"
 #include "game/Fo4Skin.h"
+#include "game/Fo4Bone.h"
 #include "game/Fo4System.h"
 #include "hdtDefaultBBPList.h"
 
@@ -66,6 +67,48 @@ namespace FO4SMP::PlayerPhysics
 				}
 			}
 			return false;
+		}
+
+		// Diagnostic: where each collision body's vertices and each simulated bone are, in the skeleton
+		// root's frame (x right, y forward, z up, game units). A-Body is about 128 units tall.
+		RE::NiPoint3 InRootFrame(const RE::NiTransform& a_root, const btVector3& a_world)
+		{
+			RE::NiTransform world;
+			world.translate = { a_world.x(), a_world.y(), a_world.z() };
+			return hdt::fo4::LocalFromWorld(a_root, world).translate;
+		}
+
+		void DumpGeometry(const Built& a_built)
+		{
+			auto* system = a_built.system.get();
+			const auto& root = system->m_skeleton->world;
+			logger::info("Geometry of {} in the skeleton root's frame (x right, y forward, z up):", a_built.file);
+			for (auto& body : system->meshes()) {
+				if (body->m_vpos.empty()) {
+					continue;
+				}
+				btVector3 sum(0, 0, 0), lo(1e30f, 1e30f, 1e30f), hi(-1e30f, -1e30f, -1e30f);
+				for (const auto& v : body->m_vpos) {
+					const auto p = InRootFrame(root, v.pos());
+					const btVector3 q(p.x, p.y, p.z);
+					sum += q;
+					lo.setMin(q);
+					hi.setMax(q);
+				}
+				sum /= static_cast<float>(body->m_vpos.size());
+				logger::info("  body {}: {} vertices, center ({:.1f}, {:.1f}, {:.1f}), box ({:.1f}, {:.1f}, {:.1f}) to ({:.1f}, {:.1f}, {:.1f})",
+					body->m_name.c_str(), body->m_vpos.size(), sum.x(), sum.y(), sum.z(), lo.x(), lo.y(), lo.z(), hi.x(), hi.y(), hi.z());
+			}
+			for (auto& bone : system->getBones()) {
+				auto* b = static_cast<hdt::Fo4Bone*>(bone.get());
+				const auto node = InRootFrame(root, btVector3(b->m_node->world.translate.x, b->m_node->world.translate.y, b->m_node->world.translate.z));
+				if (b->m_rig.isStaticOrKinematicObject()) {
+					continue;
+				}
+				const auto rig = InRootFrame(root, b->m_rig.getWorldTransform().getOrigin());
+				logger::info("  simulated bone {} (parent '{}'): node ({:.1f}, {:.1f}, {:.1f}), rigid body ({:.1f}, {:.1f}, {:.1f})",
+					b->m_name.c_str(), b->m_node->parent ? b->m_node->parent->name.c_str() : "none", node.x, node.y, node.z, rig.x, rig.y, rig.z);
+			}
 		}
 
 		struct Candidate
@@ -195,6 +238,16 @@ namespace FO4SMP::PlayerPhysics
 			Scan(root, a_defaults);
 			g_nextCheck = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(g_built.empty() ? kRescanSeconds : kAttachCheckSeconds));
 			return;
+		}
+
+		static int dumps = 0;
+		static auto nextDump = now;
+		if (dumps < 6 && now >= nextDump) {
+			for (const auto& b : g_built) {
+				DumpGeometry(b);
+			}
+			++dumps;
+			nextDump = now + std::chrono::seconds(dumps < 2 ? 2 : 10);
 		}
 
 		for (const auto& b : g_built) {
