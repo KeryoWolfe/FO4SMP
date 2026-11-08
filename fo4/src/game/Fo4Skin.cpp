@@ -254,78 +254,102 @@ namespace hdt::fo4
 		};
 	}
 
+	namespace
+	{
+		struct NifFile
+		{
+			std::vector<std::string> types;
+			std::vector<std::uint16_t> typeIndex;
+			std::vector<std::uint32_t> sizes;
+			std::vector<std::string> strings;
+			std::vector<std::size_t> offsets;
+			std::uint32_t numBlocks = 0;
+
+			std::string_view TypeOf(std::int32_t a_block) const
+			{
+				return a_block >= 0 && static_cast<std::uint32_t>(a_block) < numBlocks && typeIndex[a_block] < types.size() ? std::string_view{ types[typeIndex[a_block]] } : std::string_view{};
+			}
+		};
+
+		// Header (nif.xml, 20.2.0.7 / Bethesda stream header) and block offsets.
+		std::string ParseNif(std::string_view a_data, NifFile& f)
+		{
+			NifReader r{ a_data };
+			const auto eol = a_data.find('\n');
+			if (eol == std::string_view::npos || !a_data.starts_with("Gamebryo File Format")) {
+				return "not a NIF";
+			}
+			r.pos = eol + 1;
+			const auto version = r.Get<std::uint32_t>();
+			if (version != 0x14020007) {
+				return std::format("NIF version {:08X}, expected 14020007", version);
+			}
+			r.Get<std::uint8_t>();  // endian
+			const auto userVersion = r.Get<std::uint32_t>();
+			f.numBlocks = r.Get<std::uint32_t>();
+			if (userVersion < 3) {
+				return std::format("user version {}, expected a Bethesda stream header", userVersion);
+			}
+			const auto bsVersion = r.Get<std::uint32_t>();
+			r.ExportString();  // author
+			if (bsVersion > 130) {
+				r.Get<std::uint32_t>();
+			} else {
+				r.ExportString();  // process script
+			}
+			r.ExportString();  // export script
+			if (bsVersion >= 103) {
+				r.ExportString();  // max filepath
+			}
+			f.types.resize(r.Get<std::uint16_t>());
+			for (auto& t : f.types) {
+				t = r.SizedString();
+			}
+			f.typeIndex.resize(f.numBlocks);
+			for (auto& t : f.typeIndex) {
+				t = r.Get<std::uint16_t>() & 0x7FFF;
+			}
+			f.sizes.resize(f.numBlocks);
+			for (auto& s : f.sizes) {
+				s = r.Get<std::uint32_t>();
+			}
+			f.strings.resize(r.Get<std::uint32_t>());
+			r.Get<std::uint32_t>();  // max string length
+			for (auto& s : f.strings) {
+				s = r.SizedString();
+			}
+			const auto numGroups = r.Get<std::uint32_t>();
+			for (std::uint32_t i = 0; i < numGroups && r.ok; ++i) {
+				r.Get<std::uint32_t>();
+			}
+			if (!r.ok) {
+				return "truncated header";
+			}
+			f.offsets.resize(f.numBlocks);
+			std::size_t at = r.pos;
+			for (std::uint32_t i = 0; i < f.numBlocks; ++i) {
+				f.offsets[i] = at;
+				at += f.sizes[i];
+			}
+			if (at > a_data.size()) {
+				return "block sizes run past the end of the file";
+			}
+			return {};
+		}
+	}
+
 	std::string ReadNifSkinBoneNames(std::string_view a_data, std::unordered_map<std::string, std::vector<std::string>>& a_out)
 	{
 		a_out.clear();
-		NifReader r{ a_data };
-
-		// Header (nif.xml, 20.2.0.7 / Bethesda stream header).
-		const auto eol = a_data.find('\n');
-		if (eol == std::string_view::npos || !a_data.starts_with("Gamebryo File Format")) {
-			return "not a NIF";
+		NifFile file;
+		if (auto error = ParseNif(a_data, file); !error.empty()) {
+			return error;
 		}
-		r.pos = eol + 1;
-		const auto version = r.Get<std::uint32_t>();
-		if (version != 0x14020007) {
-			return std::format("NIF version {:08X}, expected 14020007", version);
-		}
-		r.Get<std::uint8_t>();  // endian
-		const auto userVersion = r.Get<std::uint32_t>();
-		const auto numBlocks = r.Get<std::uint32_t>();
-		if (userVersion < 3) {
-			return std::format("user version {}, expected a Bethesda stream header", userVersion);
-		}
-		const auto bsVersion = r.Get<std::uint32_t>();
-		r.ExportString();  // author
-		if (bsVersion > 130) {
-			r.Get<std::uint32_t>();
-		} else {
-			r.ExportString();  // process script
-		}
-		r.ExportString();  // export script
-		if (bsVersion >= 103) {
-			r.ExportString();  // max filepath
-		}
-		const auto numTypes = r.Get<std::uint16_t>();
-		std::vector<std::string> types(numTypes);
-		for (auto& t : types) {
-			t = r.SizedString();
-		}
-		std::vector<std::uint16_t> typeIndex(numBlocks);
-		for (auto& t : typeIndex) {
-			t = r.Get<std::uint16_t>() & 0x7FFF;
-		}
-		std::vector<std::uint32_t> sizes(numBlocks);
-		for (auto& s : sizes) {
-			s = r.Get<std::uint32_t>();
-		}
-		const auto numStrings = r.Get<std::uint32_t>();
-		r.Get<std::uint32_t>();  // max string length
-		std::vector<std::string> strings(numStrings);
-		for (auto& s : strings) {
-			s = r.SizedString();
-		}
-		const auto numGroups = r.Get<std::uint32_t>();
-		for (std::uint32_t i = 0; i < numGroups && r.ok; ++i) {
-			r.Get<std::uint32_t>();
-		}
-		if (!r.ok) {
-			return "truncated header";
-		}
-
-		// Block offsets, then the pieces we need.
-		std::vector<std::size_t> offsets(numBlocks);
-		std::size_t at = r.pos;
-		for (std::uint32_t i = 0; i < numBlocks; ++i) {
-			offsets[i] = at;
-			at += sizes[i];
-		}
-		if (at > a_data.size()) {
-			return "block sizes run past the end of the file";
-		}
-		auto typeOf = [&](std::int32_t a_block) -> std::string_view {
-			return a_block >= 0 && static_cast<std::uint32_t>(a_block) < numBlocks && typeIndex[a_block] < types.size() ? std::string_view{ types[typeIndex[a_block]] } : std::string_view{};
-		};
+		const auto& numBlocks = file.numBlocks;
+		const auto& sizes = file.sizes;
+		const auto& offsets = file.offsets;
+		const auto& strings = file.strings;
+		auto typeOf = [&](std::int32_t a_block) { return file.TypeOf(a_block); };
 		auto nameOf = [&](std::int32_t a_block) -> std::string {  // NiObjectNET::name, the first field
 			if (a_block < 0 || static_cast<std::uint32_t>(a_block) >= numBlocks || sizes[a_block] < 4) {
 				return {};
@@ -369,5 +393,69 @@ namespace hdt::fo4
 			}
 		}
 		return a_out.empty() ? "no skinned shapes found" : std::string{};
+	}
+
+	std::string ReadNifNodes(std::string_view a_data, std::unordered_map<std::string, NifNode>& a_out)
+	{
+		a_out.clear();
+		NifFile file;
+		if (auto error = ParseNif(a_data, file); !error.empty()) {
+			return error;
+		}
+		std::unordered_map<std::int32_t, std::int32_t> parentOf;
+		std::unordered_map<std::int32_t, std::string> nameOf;
+		std::unordered_map<std::int32_t, RE::NiTransform> localOf;
+		for (std::uint32_t i = 0; i < file.numBlocks; ++i) {
+			if (file.TypeOf(static_cast<std::int32_t>(i)).find("Node"sv) == std::string_view::npos) {
+				continue;
+			}
+			// NiObjectNET: name, extra data list, controller; NiAVObject (BS version 130): flags, translation,
+			// rotation (row-major in the file), scale, collision; NiNode: children.
+			NifReader r{ a_data.substr(file.offsets[i], file.sizes[i]) };
+			const auto name = r.Get<std::uint32_t>();
+			const auto numExtra = r.Get<std::uint32_t>();
+			r.pos += 4ull * numExtra + 4 + 4;
+			RE::NiTransform t;
+			t.MakeIdentity();
+			t.translate.x = r.Get<float>();
+			t.translate.y = r.Get<float>();
+			t.translate.z = r.Get<float>();
+			float m[9];
+			for (float& v : m) {
+				v = r.Get<float>();
+			}
+			// The engine's loader (1.11.240 +16B92A0) stores the file's matrix transposed.
+			for (int row = 0; row < 3; ++row) {
+				for (int col = 0; col < 3; ++col) {
+					t.rotate.entry[row][col] = m[col * 3 + row];
+				}
+				t.rotate.entry[row][3] = 0.0f;
+			}
+			t.scale = r.Get<float>();
+			r.Get<std::int32_t>();  // collision
+			const auto numChildren = r.Get<std::uint32_t>();
+			if (!r.ok || numChildren > 4096) {
+				continue;
+			}
+			for (std::uint32_t c = 0; c < numChildren; ++c) {
+				parentOf[r.Get<std::int32_t>()] = static_cast<std::int32_t>(i);
+			}
+			nameOf[static_cast<std::int32_t>(i)] = name < file.strings.size() ? file.strings[name] : std::string{};
+			localOf[static_cast<std::int32_t>(i)] = t;
+		}
+		for (const auto& [block, name] : nameOf) {
+			NifNode node;
+			node.local = localOf[block];
+			if (const auto it = parentOf.find(block); it != parentOf.end() && nameOf.contains(it->second)) {
+				node.parent = nameOf[it->second];
+			}
+			for (auto b = block; parentOf.contains(b) && node.depth < 256; b = parentOf[b]) {
+				++node.depth;
+			}
+			if (!name.empty()) {
+				a_out[name] = std::move(node);
+			}
+		}
+		return a_out.empty() ? "no nodes found" : std::string{};
 	}
 }

@@ -50,6 +50,8 @@ namespace FO4SMP::PlayerPhysics
 			RE::NiTransform relative;
 		};
 		std::vector<Follow> g_follow;
+		bool g_usingNifPlacement = false;
+		std::vector<RE::NiNode*> g_restOrder;  // placed added bones, parents first
 		std::uint32_t g_systemResets = 0;
 		RE::NiNode* g_rootBone = nullptr;
 		std::chrono::steady_clock::time_point g_nextCheck{};
@@ -92,6 +94,7 @@ namespace FO4SMP::PlayerPhysics
 			logger::info("Player physics: dropped {} system(s) ({})", g_built.size(), a_why);
 			g_built.clear();
 			g_rest.clear();
+			g_restOrder.clear();
 			g_follow.clear();
 			g_rootBone = nullptr;
 		}
@@ -498,6 +501,19 @@ namespace FO4SMP::PlayerPhysics
 				}
 				return false;
 			};
+			if (g_usingNifPlacement) {
+				// Every kinematic added bone follows its NIF parent with its NIF local transform.
+				for (auto* node : g_restOrder) {
+					if (simulated.contains(node)) {
+						continue;
+					}
+					const auto& rest = g_rest.at(node);
+					g_follow.push_back({ node, rest.anchor, rest.relative });
+				}
+				logger::info("Player physics: {} kinematic added bone(s) follow their NIF parents each frame", g_follow.size());
+				g_rootBone = rootBone;
+				return;
+			}
 			std::vector<RE::NiNode*> roots;
 			for (auto& child : hdt::fo4::Children(rootBone)) {
 				auto* c = hdt::castNiNode(child.get());
@@ -549,7 +565,7 @@ namespace FO4SMP::PlayerPhysics
 			};
 			for (const auto& f : g_follow) {
 				const auto world = hdt::fo4::Compose(f.anchor->world, f.relative);
-				f.node->local = hdt::fo4::LocalFromWorld(g_rootBone->world, world);
+				f.node->local = hdt::fo4::LocalFromWorld(f.node->parent ? f.node->parent->world : g_rootBone->world, world);
 				f.node->world = world;
 				follow(f.node, 0);
 			}
@@ -560,9 +576,14 @@ namespace FO4SMP::PlayerPhysics
 		// it is found from the physics XML's name: <xml path>.nif, then
 		// Meshes\Actors\Character\CharacterAssets\<xml name>.nif (A-Body's MaleBody.xml / MaleBody.nif), and
 		// is used only if it has a bone list for every shape it is asked about.
-		std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>> g_nifCache;
+		struct NifInfo
+		{
+			std::unordered_map<std::string, std::vector<std::string>> boneNames;  // shape -> skin bone names
+			std::unordered_map<std::string, hdt::fo4::NifNode> nodes;            // node -> parent, local transform
+		};
+		std::unordered_map<std::string, NifInfo> g_nifCache;
 
-		const std::unordered_map<std::string, std::vector<std::string>>* NifBoneNames(const std::string& a_xml, const std::vector<std::string>& a_shapes)
+		const NifInfo* FindNif(const std::string& a_xml, const std::vector<std::string>& a_shapes)
 		{
 			std::filesystem::path xml{ a_xml };
 			std::vector<std::string> paths;
@@ -573,18 +594,86 @@ namespace FO4SMP::PlayerPhysics
 			for (const auto& path : paths) {
 				auto it = g_nifCache.find(path);
 				if (it == g_nifCache.end()) {
-					std::unordered_map<std::string, std::vector<std::string>> names;
+					NifInfo info;
 					const auto data = hdt::fo4::readAllFile(path.c_str());
-					const auto error = data.empty() ? std::string{ "not found (loose files only)" } : hdt::fo4::ReadNifSkinBoneNames(data, names);
-					logger::info("Player physics: NIF {}: {}", path, error.empty() ? std::format("{} skinned shape(s)", names.size()) : error);
-					it = g_nifCache.emplace(path, std::move(names)).first;
+					auto error = data.empty() ? std::string{ "not found (loose files only)" } : hdt::fo4::ReadNifSkinBoneNames(data, info.boneNames);
+					if (error.empty()) {
+						if (auto nodeError = hdt::fo4::ReadNifNodes(data, info.nodes); !nodeError.empty()) {
+							error = "node tree: " + nodeError;
+						}
+					}
+					logger::info("Player physics: NIF {}: {}", path, error.empty() ? std::format("{} skinned shape(s), {} node(s)", info.boneNames.size(), info.nodes.size()) : error);
+					it = g_nifCache.emplace(path, std::move(info)).first;
 				}
-				if (!it->second.empty() && std::ranges::all_of(a_shapes, [&](const std::string& s) { return it->second.contains(s); })) {
-					logger::info("Player physics: skin bone names from {}", path);
+				if (!it->second.boneNames.empty() && std::ranges::all_of(a_shapes, [&](const std::string& s) { return it->second.boneNames.contains(s); })) {
+					logger::info("Player physics: using {} for bone names and the added bones' places", path);
 					return &it->second;
 				}
 			}
 			return nullptr;
+		}
+
+		// Fallout 4: place the bones an outfit adds (they hang off Root with an identity local transform) where
+		// its NIF puts them: under their NIF parent with their NIF local transform. In A-Body's NIF every *_SMP
+		// bone is a child of its kinematic partner with the identity (Penis_01_SMP under Penis_01,
+		// Breast_skin_SMP.L under LBreast_skin), so its rest place is its partner's place. Replaces the bind-data
+		// placement (FixAddedBones), which anchored on whichever real bone shared the most skin weight.
+		void PlaceAddedBonesFromNif(RE::NiNode* a_skeleton, const NifInfo& a_nif)
+		{
+			auto* rootBone = hdt::fo4::findNode(a_skeleton, RE::BSFixedString("Root"));
+			if (!rootBone) {
+				return;
+			}
+			std::vector<RE::NiNode*> added;
+			std::function<void(RE::NiNode*, int)> collect = [&](RE::NiNode* a_node, int a_depth) {
+				if (a_depth > 64) {
+					return;
+				}
+				added.push_back(a_node);
+				for (auto& child : hdt::fo4::Children(a_node)) {
+					if (auto* c = hdt::castNiNode(child.get())) {
+						collect(c, a_depth + 1);
+					}
+				}
+			};
+			for (auto& child : hdt::fo4::Children(rootBone)) {
+				if (auto* c = hdt::castNiNode(child.get()); c && !std::string_view{ c->name.c_str() }.starts_with("COM"sv)) {
+					collect(c, 0);
+				}
+			}
+			std::erase_if(added, [&](RE::NiNode* n) { return !a_nif.nodes.contains(n->name.c_str()); });
+			std::ranges::sort(added, [&](RE::NiNode* a, RE::NiNode* b) { return a_nif.nodes.at(a->name.c_str()).depth < a_nif.nodes.at(b->name.c_str()).depth; });
+
+			int placed = 0;
+			for (auto* node : added) {
+				const auto& nif = a_nif.nodes.at(node->name.c_str());
+				auto* parent = nif.parent.empty() ? nullptr : hdt::fo4::findNode(a_skeleton, RE::BSFixedString(nif.parent.c_str()));
+				if (!parent || !node->parent || parent == node) {
+					logger::info("Player physics: added bone '{}': NIF parent '{}' isn't in the skeleton; left as it is", node->name.c_str(), nif.parent);
+					continue;
+				}
+				const auto world = hdt::fo4::Compose(parent->world, nif.local);
+				const float dx = world.translate.x - node->world.translate.x, dy = world.translate.y - node->world.translate.y, dz = world.translate.z - node->world.translate.z;
+				node->local = hdt::fo4::LocalFromWorld(node->parent->world, world);
+				node->world = world;
+				std::function<void(RE::NiNode*, int)> follow = [&](RE::NiNode* a_parent, int a_depth) {
+					if (a_depth > 64) {
+						return;
+					}
+					for (auto& child : hdt::fo4::Children(a_parent)) {
+						if (auto* c = hdt::castNiNode(child.get())) {
+							c->world = hdt::fo4::Compose(a_parent->world, c->local);
+							follow(c, a_depth + 1);
+						}
+					}
+				};
+				follow(node, 0);
+				g_rest[node] = { parent, nif.local };
+				g_restOrder.push_back(node);
+				++placed;
+				logger::info("Player physics: added bone '{}' placed under '{}' as in the NIF (moved {:.1f} units)", node->name.c_str(), nif.parent, std::sqrt(dx * dx + dy * dy + dz * dz));
+			}
+			logger::info("Player physics: {} added bone(s) placed from the NIF", placed);
 		}
 
 		struct Candidate
@@ -694,25 +783,37 @@ namespace FO4SMP::PlayerPhysics
 					continue;
 				}
 				logger::info("Player physics: building {} from {} (model node '{}')", c.file, c.source, c.model->name.c_str());
-				FixAddedBones(skeleton, c.model);
+				// The outfit's NIF: skin bone names for the null entries, and the added bones' places.
+				std::vector<std::string> nifShapes;
+				std::function<void(RE::NiAVObject*, int)> skinned = [&](RE::NiAVObject* a_object, int a_depth) {
+					if (!a_object || a_depth > 64) {
+						return;
+					}
+					if (auto* tri = hdt::castBSTriShape(a_object)) {
+						hdt::fo4::SkinnedShape probe;
+						if (hdt::fo4::ReadSkinnedShape(tri, probe, false).empty()) {
+							nifShapes.emplace_back(tri->name.c_str());
+						}
+					}
+					if (auto* n = hdt::castNiNode(a_object)) {
+						for (auto& child : hdt::fo4::Children(n)) {
+							skinned(child.get(), a_depth + 1);
+						}
+					}
+				};
+				skinned(c.model, 0);
+				const NifInfo* nif = FindNif(c.file, nifShapes);
+				g_usingNifPlacement = nif && !nif->nodes.empty();
+				if (g_usingNifPlacement) {
+					PlaceAddedBonesFromNif(skeleton, *nif);
+				} else {
+					logger::warn("Player physics: no NIF found for {} with all {} skinned shape(s); placing added bones from the bind data and leaving null skin bones unset", c.file, nifShapes.size());
+					FixAddedBones(skeleton, c.model);
+				}
 
 				hdt::DefaultBBP::PhysicsFile_t file{ c.file, {} };
 				hdt::Fo4SystemCreator creator;
-				{
-					// The shapes under the model with null skin bones.
-					std::vector<std::string> shapes;
-					for (const auto& [shape, count] : g_unresolvedShapes) {
-						if (IsAttachedUnder(shape, c.model)) {
-							shapes.emplace_back(shape->name.c_str());
-						}
-					}
-					if (!shapes.empty()) {
-						creator.m_nifBoneNames = NifBoneNames(c.file, shapes);
-						if (!creator.m_nifBoneNames) {
-							logger::warn("Player physics: no NIF found with bone lists for the {} shape(s) with null skin bones; their collision will be wrong", shapes.size());
-						}
-					}
-				}
+				creator.m_nifBoneNames = nif ? &nif->boneNames : nullptr;
 				const auto start = std::chrono::steady_clock::now();
 				auto system = creator.createOrUpdateSystem(skeleton, c.model, &file, {}, nullptr);
 				const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();

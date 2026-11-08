@@ -47,4 +47,14 @@ namespace hdt::fo4
 	// bone entries the game leaves null at runtime (A-Body's Virtual* collision shapes). Returns "" on
 	// success, or why the file couldn't be read. a_data is the whole file.
 	std::string ReadNifSkinBoneNames(std::string_view a_data, std::unordered_map<std::string, std::vector<std::string>>& a_out);
+
+	// The node tree of a Fallout 4 NIF: each NiNode-type block's parent name and local transform (rotation
+	// converted to the engine's in-memory layout, as its loader does). a_data is the whole file.
+	struct NifNode
+	{
+		std::string parent;
+		RE::NiTransform local;
+		int depth = 0;
+	};
+	std::string ReadNifNodes(std::string_view a_data, std::unordered_map<std::string, NifNode>& a_out);
 }
