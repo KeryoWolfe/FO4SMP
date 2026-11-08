@@ -18,7 +18,7 @@ namespace
 		L"FO4FasterHdtSMP.dll"sv,
 	};
 
-	bool g_addressesOK = false;
+	FO4SMP::AddressCheck::Result g_addresses{};
 	bool g_worldOK = false;
 	bool g_reportedInConsole = false;
 
@@ -83,7 +83,9 @@ namespace
 		}
 		const auto line = std::format("{} {}: {}, physics core {}. No physics on actors yet (milestone 1).",
 			Version::PROJECT, Version::NAME,
-			g_addressesOK ? "addresses OK" : "ADDRESS CHECK FAILED (see FO4SMP.log)",
+			g_addresses.Passed() ?
+				(g_addresses.hooked ? std::format("addresses OK ({} hooked by another plugin)", g_addresses.hooked) : "addresses OK"s) :
+				"ADDRESS CHECK FAILED (see FO4SMP.log)"s,
 			g_worldOK ? "running" : "FAILED (see FO4SMP.log)");
 		if (FO4SMP::Console::Print(line)) {
 			g_reportedInConsole = true;
@@ -137,8 +139,8 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 		return false;
 	}
 
-	g_addressesOK = FO4SMP::AddressCheck::Run();
-	if (g_addressesOK) {
+	g_addresses = FO4SMP::AddressCheck::Run();
+	if (g_addresses.Passed()) {
 		logger::info("Address check passed");
 	} else {
 		logger::error("Address check failed; later milestones won't install hooks on this runtime.");

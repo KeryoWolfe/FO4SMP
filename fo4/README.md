@@ -32,12 +32,12 @@ Run from the "x64 Native Tools Command Prompt" of the newest Visual Studio insta
 
 ## Test (milestone 1)
 
-1. Enable the `FO4SMP` mod in MO2. FO4 Faster HDT-SMP can stay enabled: FO4SMP installs no hooks, and it should warn about it.
+1. Enable the `FO4SMP` mod in MO2. FO4 Faster HDT-SMP can stay enabled (FO4SMP installs no hooks, and warns about it), but for a full address check run once with it disabled.
 2. Start the game and load a save.
 3. In the console, expect one line: `FO4SMP 0.1.0: addresses OK, physics core running. No physics on actors yet (milestone 1).`
 4. Open `Documents\My Games\Fallout4\F4SE\FO4SMP.log`. Expected, in order:
    - `FO4SMP 0.1.0 loading on Fallout 4 1.11.240.0`
-   - 24 `Address check: ... OK` lines (one says "weak match"), then `Address check passed`
+   - 24 `Address check:` lines, then a summary (`N OK, N hooked by another plugin, 0 failed`) and `Address check passed`. With FO4 Faster HDT-SMP enabled, the functions it hooks show as `HOOKED by FO4FasterHdtSMP-AVX2.dll` (its jumps replace their first bytes, so they can't be compared); with it disabled, all 24 should be `OK`.
    - `Another SMP plugin is loaded: FO4FasterHdtSMP-AVX2.dll ...` (if it is enabled)
    - `Game data ready`
    - `Config: read Data/F4SE/Plugins/FO4SMP/configs.json`, `Config: no ...userConfigs.json`, five `Config:` lines with the values (`solver numIterations=16 erp=0.2 min-fps=60 maxSubSteps=4`, ...)
