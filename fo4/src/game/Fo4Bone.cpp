@@ -115,6 +115,8 @@ namespace hdt
 		std::string g_maxDistanceBone;
 	}
 
+	bool Fo4Bone::s_worldOnly = false;
+
 	std::string Fo4Bone::TakeWriteReport()
 	{
 		std::string report;
@@ -171,7 +173,7 @@ namespace hdt
 		// here alone would be lost. Write the local transform that gives this world transform under the
 		// current parent, so the pose survives that update (one frame behind the parent's own motion).
 		// The world transform is set too, so the children updated below follow at once.
-		if (m_node->parent) {
+		if (m_node->parent && !s_worldOnly) {
 			m_node->local = fo4::LocalFromWorld(m_node->parent->world, world);
 		}
 		m_node->world = world;

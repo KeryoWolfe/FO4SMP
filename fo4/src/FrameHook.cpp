@@ -121,6 +121,10 @@ namespace FO4SMP::FrameHook
 		if (g_frozen) {
 			logger::info("Frame step: freeze.txt found; the physics is built but not stepped (rest pose shown)");
 		}
+		hdt::Fo4Bone::s_worldOnly = std::filesystem::exists(std::filesystem::path{ "Data" } / "F4SE" / "Plugins" / "FO4SMP" / "worldonly.txt", ec);
+		if (hdt::Fo4Bone::s_worldOnly) {
+			logger::info("Frame step: worldonly.txt found; simulated bones get their world transform only (diagnostic)");
+		}
 		if (g_installed) {
 			g_stepping = true;
 			logger::info("Frame step: enabled");

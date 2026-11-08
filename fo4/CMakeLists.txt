@@ -123,7 +123,8 @@ target_precompile_headers("${PROJECT_NAME}" PRIVATE src/PCH.h)
 
 if(MSVC)
 	# AVX2, like FSMP's and FO4 Faster HDT-SMP's main builds (the core has an AVX2 skinning path).
-	target_compile_options("${PROJECT_NAME}" PRIVATE /arch:AVX2 /W4 /wd4100 /wd4201 /permissive- /Zc:preprocessor /utf-8 /bigobj /MP /EHsc)
+	target_compile_options("${PROJECT_NAME}" PRIVATE /arch:AVX2 /W4 /wd4100 /wd4201 /permissive- /Zc:preprocessor /utf-8 /bigobj /MP /EHsc /Zi
+		"$<$<CONFIG:Release>:/Zc:inline;/Ob3>")  # as FSMP's Release build (src/CMakeLists.txt); RelWithDebInfo's /Ob1 hobbles the SIMD collision code
 	target_link_options("${PROJECT_NAME}" PRIVATE /DEBUG:FULL "$<$<NOT:$<CONFIG:Debug>>:/OPT:REF;/OPT:ICF>")
 endif()
 
