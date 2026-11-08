@@ -41,7 +41,7 @@ namespace FO4SMP
 		[[nodiscard]] float Erp() { return getSolverInfo().m_erp; }
 
 	private:
-		PhysicsWorld() = default;
+		PhysicsWorld();
 
 		btVector3 ApplyTranslationOffset();
 		void RestoreTranslationOffset(const btVector3& a_offset);

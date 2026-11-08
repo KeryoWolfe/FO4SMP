@@ -1,11 +1,31 @@
 #include "PhysicsWorld.h"
 
 #include "GlobalConfig.h"
+#include "game/Fo4ConvertNi.h"
 #include "game/Fo4Settings.h"
 #include "game/Fo4System.h"
 
 namespace FO4SMP
 {
+	// FSMP's SkyrimPhysicsWorld constructor (src/hdtSkyrimPhysicsWorld.cpp): gravity in game units and the
+	// solver settings FSMP's XMLs are tuned for. Without them Bullet keeps its defaults (gravity along -Y,
+	// warm starting, no split impulse, friction 1), and collisions fling simulated bones.
+	PhysicsWorld::PhysicsWorld()
+	{
+		gDisableDeactivation = true;
+		setGravity(btVector3(0, 0, -9.8f * hdt::scaleSkyrim));
+
+		auto& solver = getSolverInfo();
+		solver.m_friction = 0;
+		solver.m_splitImpulse = true;
+		solver.m_splitImpulsePenetrationThreshold = -0.01f;
+		solver.m_erp2 = 0.15f;
+		solver.m_globalCfm = 0.001f;
+		solver.m_restitutionVelocityThreshold = 0.2f;
+		solver.m_solverMode = SOLVER_SIMD;
+		solver.m_leastSquaresResidualThreshold = 0.0001f;
+	}
+
 	PhysicsWorld* PhysicsWorld::Get()
 	{
 		static PhysicsWorld* world = new PhysicsWorld();
