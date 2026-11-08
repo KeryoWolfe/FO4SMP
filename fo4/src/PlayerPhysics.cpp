@@ -54,6 +54,15 @@ namespace FO4SMP::PlayerPhysics
 		std::chrono::steady_clock::time_point g_nextCheck{};
 		bool g_reportedEmpty = false;
 
+		// Fallout 4: the skins of shapes the game doesn't draw (A-Body's Virtual* collision shapes) start with
+		// null bone entries (run 20: VirtualHands 36 of 38, VirtualArms 18 of 28) and appear to get them
+		// later (run 2's second build, after an outfit change, found bones its first build hadn't). Building
+		// then leaves the collision surfaces on a few bones. Wait for them, up to kBoneWaitSeconds.
+		constexpr double kBoneWaitSeconds = 30.0;
+		std::chrono::steady_clock::time_point g_rootSince{};
+		std::vector<std::pair<RE::NiAVObject*, std::uint32_t>> g_unresolvedShapes;  // per shape, filled by Walk
+		bool g_waiting = false;
+
 		RE::NiAVObject* PlayerRoot()
 		{
 			// F4SE's g_player for 1.11.240 (0x032DD370 = Address Library 2698073); CommonLibF4's
@@ -561,6 +570,9 @@ namespace FO4SMP::PlayerPhysics
 			if (auto* shape = hdt::castBSTriShape(a_object)) {
 				hdt::fo4::SkinnedShape skinned;
 				const auto error = hdt::fo4::ReadSkinnedShape(shape, skinned, false);
+				if (error.empty() && skinned.unresolved) {
+					g_unresolvedShapes.push_back({ shape, skinned.unresolved });
+				}
 				if (a_log) {
 					if (error.empty()) {
 						logger::info("Player physics:   shape '{}' ({}): {} bones, {} vertices, {} precision", shape->name.c_str(), hdt::fo4::ClassName(shape),
@@ -600,7 +612,29 @@ namespace FO4SMP::PlayerPhysics
 				logger::info("Player physics: scanning the player's 3D '{}' ({})", a_root->name.c_str(), hdt::fo4::ClassName(a_root));
 			}
 			std::vector<Candidate> candidates;
+			g_unresolvedShapes.clear();
+			g_waiting = false;
 			Walk(a_root, a_root, a_defaults, candidates, log, 0);
+			// Only the shapes the physics will be built from count (the head's or a weapon's don't).
+			std::uint32_t g_unresolved = 0;
+			for (const auto& [shape, count] : g_unresolvedShapes) {
+				if (std::ranges::any_of(candidates, [&](const Candidate& c) { return IsAttachedUnder(shape, c.model); })) {
+					g_unresolved += count;
+				}
+			}
+
+			const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_rootSince).count();
+			if (!candidates.empty() && g_unresolved > 0) {
+				if (waited < kBoneWaitSeconds) {
+					logger::info("Player physics: {} skin bone(s) of the player's shapes aren't set yet ({:.0f} s after the 3D loaded); waiting", g_unresolved, waited);
+					g_waiting = true;
+					g_reportedEmpty = true;  // don't list the shapes again
+					return;
+				}
+				logger::warn("Player physics: {} skin bone(s) still unset after {:.0f} s; building anyway (collision shapes on those bones will be wrong)", g_unresolved, waited);
+			} else if (!candidates.empty()) {
+				logger::info("Player physics: all skin bones set ({:.0f} s after the 3D loaded)", waited);
+			}
 
 			if (candidates.empty()) {
 				if (log) {
@@ -658,6 +692,7 @@ namespace FO4SMP::PlayerPhysics
 		if (root != g_root) {
 			Drop("the player's 3D changed");
 			g_root = root;
+			g_rootSince = now;
 			g_reportedEmpty = false;
 			g_nextCheck = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(kScanDelaySeconds));
 			return;
@@ -671,7 +706,7 @@ namespace FO4SMP::PlayerPhysics
 
 		if (g_built.empty()) {
 			Scan(root, a_defaults);
-			g_nextCheck = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(g_built.empty() ? kRescanSeconds : kAttachCheckSeconds));
+			g_nextCheck = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(g_waiting ? 1.0 : (g_built.empty() ? kRescanSeconds : kAttachCheckSeconds)));
 			return;
 		}
 
