@@ -26,7 +26,7 @@ namespace hdt
 		// If the physics still shows, the frame is drawn from what FO4SMP writes; if the soft parts go stiff,
 		// it is drawn after the engine's next update recomputes world transforms from local ones.
 		static bool s_worldOnly;
-		static constexpr float kMaxDistanceFromParent = 500.0f;  // game units; A-Body's are parented to Root, at the feet, and the body is about 128 tall
+		static constexpr float kMaxDistanceFromParent = 250.0f;  // game units; A-Body's are parented to Root, at the feet; the body is about 128 tall (run 25: bones flung 490 units passed 500)
 
 		int m_depth;
 		RE::NiPointer<RE::NiNode> m_node;

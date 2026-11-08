@@ -102,6 +102,21 @@ namespace hdt
 			timeStep = RESET_PHYSICS;
 		}
 
+		// Fallout 4: a jump of the skeleton (a load door, fast travel, MoveTo) would give the kinematic bones a
+		// huge velocity for one step and fling everything tied to them. FSMP resets its systems on the loading
+		// menu; reset here when the skeleton moves more than 200 units in one frame.
+		const auto& rootPos = m_skeleton->world.translate;
+		const btVector3 pos(rootPos.x, rootPos.y, rootPos.z);
+		if (m_initialized && timeStep > RESET_PHYSICS && (pos - m_lastRootPos).length() > 200.0f) {
+			static int s_logged = 0;
+			if (s_logged < 20) {
+				++s_logged;
+				logger::info("Physics system: the skeleton jumped {:.0f} units in one frame (to {:.0f}, {:.0f}, {:.0f}); resetting", (pos - m_lastRootPos).length(), pos.x(), pos.y(), pos.z());
+			}
+			timeStep = RESET_PHYSICS;
+		}
+		m_lastRootPos = pos;
+
 		if (!m_initialized) {
 			timeStep = RESET_PHYSICS;
 			m_initialized = true;

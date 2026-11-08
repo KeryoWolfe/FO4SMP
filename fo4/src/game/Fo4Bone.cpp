@@ -154,12 +154,15 @@ namespace hdt
 			if (distance < 0.0f || distance > kMaxDistanceFromParent) {
 				++g_rejectedWrites;
 				g_explosion = true;
-				if (!m_reportedBadWrite) {
-					m_reportedBadWrite = true;
+				// The first 60 rejections are logged (any bone), with the speed the bone had, to see how explosions start.
+				static int s_logged = 0;
+				if (s_logged < 60) {
+					++s_logged;
 					const auto& o = transform.getOrigin();
-					logger::warn("Bone {}: simulated pose {} (at {:.1f}, {:.1f}, {:.1f}, parent '{}' at {:.1f}, {:.1f}, {:.1f}); not written, reset to the animated pose (reported once)",
+					logger::warn("Bone {}: simulated pose {} (at {:.1f}, {:.1f}, {:.1f}, parent '{}' at {:.1f}, {:.1f}, {:.1f}), speed {:.0f} units/s, spin {:.1f} rad/s; not written, reset ({} of 60 logged)",
 						m_name.c_str(), distance < 0.0f ? "isn't finite" : std::format("is {:.0f} units from its parent", distance),
-						o.x(), o.y(), o.z(), m_node->parent->name.c_str(), p.x, p.y, p.z);
+						o.x(), o.y(), o.z(), m_node->parent->name.c_str(), p.x, p.y, p.z,
+						m_rig.getLinearVelocity().length(), m_rig.getAngularVelocity().length(), s_logged);
 				}
 				readTransform(RESET_PHYSICS);
 				return;

@@ -42,6 +42,9 @@ namespace hdt
 
 		// angular velocity damper
 		btQuaternion m_lastRootRotation;
+
+		// Fallout 4: the skeleton's last position, to reset on a jump (door, fast travel, teleport) as FSMP does on loading.
+		btVector3 m_lastRootPos{ 0, 0, 0 };
 	};
 
 	class XMLReader;

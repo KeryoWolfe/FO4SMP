@@ -25,7 +25,7 @@
     "maxSubSteps": 4
   },
   "wind": {
-    "enabled": true,
+    "enabled": false,
     "windStrength": 2.0,
     "distanceForNoWind": 50.0,
     "distanceForMaxWind": 2000.0
