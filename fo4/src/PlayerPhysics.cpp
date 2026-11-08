@@ -27,6 +27,15 @@ namespace FO4SMP::PlayerPhysics
 
 		RE::NiAVObject* g_root = nullptr;  // only compared, never dereferenced once stale
 		std::vector<Built> g_built;
+
+		// Diagnostic: for each added bone placed from the bind data, its anchor and its pose relative to the
+		// anchor at placement, to tell how far the simulation turns it away from its rest pose.
+		struct Rest
+		{
+			RE::NiNode* anchor;
+			RE::NiTransform relative;
+		};
+		std::unordered_map<RE::NiNode*, Rest> g_rest;
 		std::chrono::steady_clock::time_point g_nextCheck{};
 		bool g_reportedEmpty = false;
 
@@ -57,6 +66,7 @@ namespace FO4SMP::PlayerPhysics
 			}
 			logger::info("Player physics: dropped {} system(s) ({})", g_built.size(), a_why);
 			g_built.clear();
+			g_rest.clear();
 		}
 
 		bool IsAttachedUnder(RE::NiAVObject* a_object, RE::NiAVObject* a_root)
@@ -146,6 +156,23 @@ namespace FO4SMP::PlayerPhysics
 			}
 			for (auto& bone : system->getBones()) {
 				auto* b = static_cast<hdt::Fo4Bone*>(bone.get());
+				const auto it = g_rest.find(b->m_node.get());
+				if (it == g_rest.end()) {
+					continue;
+				}
+				// How far the bone is turned and moved from its rest pose beside its anchor.
+				const auto expected = hdt::fo4::Compose(it->second.anchor->world, it->second.relative);
+				const auto diff = hdt::fo4::Mul(b->m_node->world.rotate, hdt::fo4::Transposed(expected.rotate));
+				const float trace = diff.entry[0][0] + diff.entry[1][1] + diff.entry[2][2];
+				const float angle = std::acos(std::clamp((trace - 1.0f) * 0.5f, -1.0f, 1.0f)) * 57.29578f;
+				const auto& w = b->m_node->world.translate;
+				const auto& e = expected.translate;
+				const float dist = std::sqrt((w.x - e.x) * (w.x - e.x) + (w.y - e.y) * (w.y - e.y) + (w.z - e.z) * (w.z - e.z));
+				logger::info("  {} bone {}: {:.1f} degrees and {:.1f} units from its rest pose beside '{}'", b->m_rig.isStaticOrKinematicObject() ? "kinematic" : "simulated",
+					b->m_name.c_str(), angle, dist, it->second.anchor->name.c_str());
+			}
+			for (auto& bone : system->getBones()) {
+				auto* b = static_cast<hdt::Fo4Bone*>(bone.get());
 				if (b->m_rig.isStaticOrKinematicObject()) {
 					continue;
 				}
@@ -223,34 +250,77 @@ namespace FO4SMP::PlayerPhysics
 				if (!node->parent) {
 					continue;
 				}
-				// The real bone of the same shape whose bind position is nearest.
+				// The anchor: the real bone the flesh around this bone follows, i.e. the real bone with the most
+				// skin weight on the vertices this bone also weighs (summed over the shapes it skins). The
+				// nearest bind position (the first try, run 11) picked Chest for the genitals and buttocks, which
+				// twists them with the torso. Nearest bind position remains the fallback.
 				const RE::NiTransform* bindX = nullptr;
 				const hdt::fo4::SkinBone* best = nullptr;
 				const Shape* bestShape = nullptr;
-				float bestDistance = 1e30f;
+				float bestScore = 0.0f;
 				for (const auto& shape : shapes) {
-					const hdt::fo4::SkinBone* self = nullptr;
-					for (const auto& b : shape.skin.bones) {
-						if (b.node == node) {
-							self = &b;
+					int selfIndex = -1;
+					for (std::size_t i = 0; i < shape.skin.bones.size(); ++i) {
+						if (shape.skin.bones[i].node == node) {
+							selfIndex = static_cast<int>(i);
 						}
 					}
-					if (!self) {
+					if (selfIndex < 0) {
 						continue;
 					}
-					const auto selfBind = hdt::fo4::Inverse(self->skinToBone).translate;
-					for (const auto& b : shape.skin.bones) {
-						if (!b.node || b.node == node || depth.contains(b.node)) {  // anchors are real bones only
+					std::vector<float> score(shape.skin.bones.size(), 0.0f);
+					for (const auto& v : shape.skin.vertices) {
+						float self = 0.0f;
+						for (int k = 0; k < 4; ++k) {
+							if (v.bones[k] == selfIndex) {
+								self += v.weights[k];
+							}
+						}
+						if (self <= 0.0f) {
 							continue;
 						}
-						const auto bind = hdt::fo4::Inverse(b.skinToBone).translate;
-						const float dx = bind.x - selfBind.x, dy = bind.y - selfBind.y, dz = bind.z - selfBind.z;
-						const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
-						if (distance < bestDistance) {
-							bestDistance = distance;
-							best = &b;
+						for (int k = 0; k < 4; ++k) {
+							const auto& b = shape.skin.bones[v.bones[k]];
+							if (v.weights[k] > 0.0f && b.node && b.node != node && !depth.contains(b.node)) {
+								score[v.bones[k]] += self * v.weights[k];
+							}
+						}
+					}
+					for (std::size_t i = 0; i < score.size(); ++i) {
+						if (score[i] > bestScore) {
+							bestScore = score[i];
+							best = &shape.skin.bones[i];
 							bestShape = &shape;
-							bindX = &self->skinToBone;
+							bindX = &shape.skin.bones[selfIndex].skinToBone;
+						}
+					}
+				}
+				if (!best) {  // fallback: the real bone of the same shape whose bind position is nearest
+					float bestDistance = 1e30f;
+					for (const auto& shape : shapes) {
+						const hdt::fo4::SkinBone* self = nullptr;
+						for (const auto& b : shape.skin.bones) {
+							if (b.node == node) {
+								self = &b;
+							}
+						}
+						if (!self) {
+							continue;
+						}
+						const auto selfBind = hdt::fo4::Inverse(self->skinToBone).translate;
+						for (const auto& b : shape.skin.bones) {
+							if (!b.node || b.node == node || depth.contains(b.node)) {
+								continue;
+							}
+							const auto bind = hdt::fo4::Inverse(b.skinToBone).translate;
+							const float dx = bind.x - selfBind.x, dy = bind.y - selfBind.y, dz = bind.z - selfBind.z;
+							const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+							if (distance < bestDistance) {
+								bestDistance = distance;
+								best = &b;
+								bestShape = &shape;
+								bindX = &self->skinToBone;
+							}
 						}
 					}
 				}
@@ -266,6 +336,7 @@ namespace FO4SMP::PlayerPhysics
 				}
 				node->local = hdt::fo4::LocalFromWorld(node->parent->world, world);
 				node->world = world;
+				g_rest[node] = { best->node, hdt::fo4::LocalFromWorld(best->node->world, world) };
 				// Children follow (an added bone's children are added bones too: Anus_00_SMP > Anus_01_Offset >
 				// Anus_01); the ones in a skin are placed themselves after this, parents first.
 				std::function<void(RE::NiNode*)> follow = [&](RE::NiNode* a_parent) {

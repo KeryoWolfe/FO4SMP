@@ -16,6 +16,7 @@ namespace FO4SMP::FrameHook
 		bool g_installed = false;
 		std::atomic<bool> g_stepping = false;
 		hdt::DefaultBBPList g_defaults;
+		bool g_frozen = false;
 
 		// Per-frame timing, reported every kReportSeconds.
 		constexpr double kReportSeconds = 10.0;
@@ -57,7 +58,9 @@ namespace FO4SMP::FrameHook
 
 			PlayerPhysics::Update(g_defaults);
 
-			const double ms = PhysicsWorld::Get()->Step(frameSeconds);
+			// Diagnostic switch: with F4SE\Plugins\FO4SMP\freeze.txt present, the physics is built but not
+			// stepped, so the body shows the rest pose FO4SMP built it from.
+			const double ms = g_frozen ? 0.0 : PhysicsWorld::Get()->Step(frameSeconds);
 			++g_frames;
 			g_stepMsTotal += ms;
 			g_stepMsMax = std::max(g_stepMsMax, ms);
@@ -113,6 +116,11 @@ namespace FO4SMP::FrameHook
 	void EnableStepping(const hdt::DefaultBBPList& a_defaults)
 	{
 		g_defaults = a_defaults;
+		std::error_code ec;
+		g_frozen = std::filesystem::exists(std::filesystem::path{ "Data" } / "F4SE" / "Plugins" / "FO4SMP" / "freeze.txt", ec);
+		if (g_frozen) {
+			logger::info("Frame step: freeze.txt found; the physics is built but not stepped (rest pose shown)");
+		}
 		if (g_installed) {
 			g_stepping = true;
 			logger::info("Frame step: enabled");
