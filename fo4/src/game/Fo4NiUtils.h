@@ -230,10 +230,19 @@ namespace hdt::fo4
 		return r;
 	}
 
+	// The identity transform. CommonLibF4's NiTransform has no constructor, so RE::NiTransform{} has a ZERO
+	// rotation, not the identity (that bug gave every bone placed by PlayerPhysics a zero rotation: run 12).
+	inline RE::NiTransform Identity()
+	{
+		RE::NiTransform t;
+		t.MakeIdentity();
+		return t;
+	}
+
 	// The inverse of a transform (Compose(a_t, Inverse(a_t)) is the identity).
 	inline RE::NiTransform Inverse(const RE::NiTransform& a_t)
 	{
-		return LocalFromWorld(a_t, RE::NiTransform{});
+		return LocalFromWorld(a_t, Identity());
 	}
 
 	inline bool IsIdentity(const RE::NiTransform& a_t, float a_eps = 1e-3f)

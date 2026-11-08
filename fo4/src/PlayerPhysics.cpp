@@ -85,7 +85,7 @@ namespace FO4SMP::PlayerPhysics
 		// bodies, each skin bone's bind position (skin space) beside its current position (Root frame).
 		RE::NiPoint3 InFrame(const RE::NiTransform& a_frame, const btVector3& a_world)
 		{
-			RE::NiTransform world;
+			auto world = hdt::fo4::Identity();
 			world.translate = { a_world.x(), a_world.y(), a_world.z() };
 			return hdt::fo4::LocalFromWorld(a_frame, world).translate;
 		}
@@ -284,6 +284,18 @@ namespace FO4SMP::PlayerPhysics
 							if (v.weights[k] > 0.0f && b.node && b.node != node && !depth.contains(b.node)) {
 								score[v.bones[k]] += self * v.weights[k];
 							}
+						}
+					}
+					{
+						std::vector<std::size_t> order(score.size());
+						std::iota(order.begin(), order.end(), std::size_t{ 0 });
+						std::ranges::sort(order, [&](std::size_t a, std::size_t b) { return score[a] > score[b]; });
+						std::string top;
+						for (std::size_t r = 0; r < order.size() && r < 3 && score[order[r]] > 0.0f; ++r) {
+							top += std::format("{}'{}' {:.1f}", r ? ", " : "", shape.skin.bones[order[r]].node->name.c_str(), score[order[r]]);
+						}
+						if (!top.empty()) {
+							logger::info("Player physics:   '{}' in '{}': shared skin weight with {}", node->name.c_str(), shape.name, top);
 						}
 					}
 					for (std::size_t i = 0; i < score.size(); ++i) {
