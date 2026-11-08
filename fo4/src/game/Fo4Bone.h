@@ -19,6 +19,9 @@ namespace hdt
 		// writeTransform since the last call (all bones), or "".
 		static std::string TakeWriteReport();
 
+		// True if a simulated pose was rejected since the last call (PlayerPhysics then resets the system).
+		static bool TakeExplosion();
+
 		// Diagnostic (F4SE\Plugins\FO4SMP\worldonly.txt): write only the world transform, not the local one.
 		// If the physics still shows, the frame is drawn from what FO4SMP writes; if the soft parts go stiff,
 		// it is drawn after the engine's next update recomputes world transforms from local ones.

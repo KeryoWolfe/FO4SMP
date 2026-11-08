@@ -17,6 +17,9 @@ namespace FO4SMP::PlayerPhysics
 	// outfit changed).
 	void Update(const hdt::DefaultBBPList& a_defaults);
 
+	// Times the simulated bones were all put back on their rest pose after an explosion, since the last call.
+	std::uint32_t TakeSystemResets();
+
 	// One line for the console: what's simulated on the player.
 	[[nodiscard]] std::string Status();
 }

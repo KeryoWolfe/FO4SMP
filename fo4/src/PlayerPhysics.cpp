@@ -50,6 +50,7 @@ namespace FO4SMP::PlayerPhysics
 			RE::NiTransform relative;
 		};
 		std::vector<Follow> g_follow;
+		std::uint32_t g_systemResets = 0;
 		RE::NiNode* g_rootBone = nullptr;
 		std::chrono::steady_clock::time_point g_nextCheck{};
 		bool g_reportedEmpty = false;
@@ -424,10 +425,39 @@ namespace FO4SMP::PlayerPhysics
 			}
 			logger::info("Player physics: {} added bone(s) placed from the bind data ({} added bones found in the skins)", fixed, added.size());
 
-			// (Run 13 also moved each simulated bone's kinematic partner, Penis_Offset for Penis_Offset_SMP, onto
-			// its _SMP bone. Removed in run 22: A-Body's constraints expect the offset between them, e.g.
-			// PenisConstOffset holds Penis_Offset_SMP 3 units along x from Penis_Offset, so the move made that
-			// constraint pull the penis root by about 3 units forever.)
+			// (Restored in run 23: without this, run 22 had 2,600-2,900 rejected poses per 10 s against 8-123.)
+			// The kinematic partners of the simulated bones (Penis_01 for Penis_01_SMP, Penis_Offset for
+			// Penis_Offset_SMP...) carry no vertices, so they have no bind data. If one still has an identity
+			// local transform, put it where its _SMP bone now is: FSMP's XMLs pair each simulated bone with a
+			// kinematic one at the same rest place.
+			for (auto* smp : added) {
+				std::string_view name{ smp->name.c_str() };
+				if (!name.ends_with("_SMP"sv)) {
+					continue;
+				}
+				const RE::BSFixedString partnerName{ std::string{ name.substr(0, name.size() - 4) }.c_str() };
+				auto* partner = hdt::fo4::findNode(a_skeleton, partnerName);
+				if (!partner || !partner->parent || depth.contains(partner) || !hdt::fo4::IsIdentity(partner->local)) {
+					continue;
+				}
+				const float dx = smp->world.translate.x - partner->world.translate.x, dy = smp->world.translate.y - partner->world.translate.y,
+							dz = smp->world.translate.z - partner->world.translate.z;
+				const float moved = std::sqrt(dx * dx + dy * dy + dz * dz);
+				if (moved < 0.5f) {
+					continue;
+				}
+				RE::NiTransform world = partner->world;
+				world.translate = smp->world.translate;
+				partner->local = hdt::fo4::LocalFromWorld(partner->parent->world, world);
+				partner->world = world;
+				// Its children (Anus_01 is Anus_01_SMP's parent) keep their place.
+				for (auto& child : hdt::fo4::Children(partner)) {
+					if (child) {
+						child->local = hdt::fo4::LocalFromWorld(partner->world, child->world);
+					}
+				}
+				logger::info("Player physics: kinematic partner '{}' (parent '{}') moved {:.1f} units to '{}'", partner->name.c_str(), partner->parent->name.c_str(), moved, name);
+			}
 		}
 
 		void BuildFollow(RE::NiNode* a_skeleton, hdt::Fo4System* a_system)
@@ -721,6 +751,26 @@ namespace FO4SMP::PlayerPhysics
 		}
 		if (root && !g_built.empty()) {
 			ApplyFollow();  // every frame, before the physics reads the skeleton
+			// A rejected (exploded) pose leaves its neighbours strained; resetting one bone onto its last
+			// written pose kept the chain wild (run 22: ~2,900 rejections per 10 s). Put every simulated bone
+			// back on its rest pose beside its anchor, at rest, and let it settle again.
+			if (hdt::Fo4Bone::TakeExplosion()) {
+				++g_systemResets;
+				for (const auto& b : g_built) {
+					for (auto& bone : b.system->getBones()) {
+						auto* fb = static_cast<hdt::Fo4Bone*>(bone.get());
+						if (fb->m_rig.isStaticOrKinematicObject()) {
+							continue;
+						}
+						if (const auto it = g_rest.find(fb->m_node.get()); it != g_rest.end() && fb->m_node->parent) {
+							const auto world = hdt::fo4::Compose(it->second.anchor->world, it->second.relative);
+							fb->m_node->local = hdt::fo4::LocalFromWorld(fb->m_node->parent->world, world);
+							fb->m_node->world = world;
+						}
+						fb->readTransform(hdt::RESET_PHYSICS);
+					}
+				}
+			}
 		}
 		if (!root || now < g_nextCheck) {
 			return;
@@ -751,6 +801,13 @@ namespace FO4SMP::PlayerPhysics
 			}
 		}
 		g_nextCheck = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(kAttachCheckSeconds));
+	}
+
+	std::uint32_t TakeSystemResets()
+	{
+		const auto n = g_systemResets;
+		g_systemResets = 0;
+		return n;
 	}
 
 	std::string Status()

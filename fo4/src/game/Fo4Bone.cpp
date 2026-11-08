@@ -111,11 +111,19 @@ namespace hdt
 
 		// Written on the main thread only (SkinnedMeshWorld::writeTransform is sequential).
 		std::uint32_t g_rejectedWrites = 0;
+		bool g_explosion = false;
 		float g_maxDistance = 0.0f;
 		std::string g_maxDistanceBone;
 	}
 
 	bool Fo4Bone::s_worldOnly = false;
+
+	bool Fo4Bone::TakeExplosion()
+	{
+		const bool e = g_explosion;
+		g_explosion = false;
+		return e;
+	}
 
 	std::string Fo4Bone::TakeWriteReport()
 	{
@@ -145,6 +153,7 @@ namespace hdt
 			const float distance = Finite(transform) ? (transform.getOrigin() - parentPos).length() : -1.0f;
 			if (distance < 0.0f || distance > kMaxDistanceFromParent) {
 				++g_rejectedWrites;
+				g_explosion = true;
 				if (!m_reportedBadWrite) {
 					m_reportedBadWrite = true;
 					const auto& o = transform.getOrigin();
