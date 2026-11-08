@@ -1,5 +1,30 @@
 # FO4SMP test results
 
+## Milestone 2: 7 November 2026, 19:14 (FO4 Faster HDT-SMP disabled)
+
+| | |
+|---|---|
+| Build | `fo4-port` at `ee4c59c` (0.2.0), VS 2026 / MSVC 14.51 |
+| Game | Fallout 4 1.11.240 (Steam), F4SE, MO2, the owner's full load order; Ryzen 7 2700X, RTX 5070 |
+| Steps | Load a save, play about five minutes (walking, Pip-Boy, a cell change), read `FO4SMP.log` |
+
+| Check | Expected | Actual | Status |
+|---|---|---|---|
+| Hook installed | at the main loop's call to `Main::OnIdle`, +0C315BB | `Frame hook: installed at ... (+0C315BB)`; no other plugin had the call | Pass |
+| Stepping starts | after the physics world exists | `Frame step: enabled`, first frame 16 ms later | Pass |
+| Once per frame | logged fps close to the game's | 28 to 60 fps logged per 10 s; the owner saw 25 to 45 in game | Pass |
+| Step time (empty world) | well under 1 ms | average 0.008 to 0.011 ms; longest 0.548 ms | Pass |
+| Stability | no stutter, hang or crash from FO4SMP | none reported | Pass |
+| Console | readable, milestone 2 | `FO4SMP 0.2.0: addresses OK (1 hooked by another plugin), physics core running, frame step hooked...` | Pass |
+
+Notes:
+
+- **The first report** (292 frames in 79.6 s, 3.7 fps) covers the save's loading screen: the main loop calls `Main::OnIdle` only a few times a second while loading. The 0.25 s cap keeps a step after a load short.
+- **`BipedAnim::AttachSkinnedObject` is hooked by `f4ee.dll`** (LooksMenu), named now that the check follows trampolines. LooksMenu re-applies body morphs and overlays when armor attaches. FO4SMP's own armor-attach hook (milestone 4) must chain with it.
+- The logged fps is per 10 s and includes menu time (the Pip-Boy runs faster), so it reads a little higher than the in-game counter.
+
+**Milestone 2: passed.**
+
 ## Milestone 1, run 3: 7 November 2026, 18:46 (FO4 Faster HDT-SMP disabled)
 
 Same build and setup as run 2, FO4 Faster HDT-SMP **disabled**.
