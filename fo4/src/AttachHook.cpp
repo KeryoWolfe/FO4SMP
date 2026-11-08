@@ -12,6 +12,7 @@ namespace FO4SMP::AttachHook
 		Attach_t* g_original1 = nullptr;
 		Attach_t* g_original2 = nullptr;
 		bool      g_installed = false;
+		std::atomic<std::uint32_t> g_playerGeneration{ 0 };
 
 		std::mutex          g_lock;
 		std::vector<Attach> g_recent;  // newest last; bounded
@@ -73,7 +74,10 @@ namespace FO4SMP::AttachHook
 			ActorOf(a_biped, info.actor, info.formID);
 
 			auto* result = a_original(a_biped, a_object, a_parent, a_bipedIndex, a_firstPerson);
-			info.attached = result;
+			info.attached.reset(result);
+			if (info.formID == 0x14 && !a_firstPerson && !info.physicsXml.empty() && result) {
+				g_playerGeneration.fetch_add(1);
+			}
 
 			std::scoped_lock guard{ g_lock };
 			const bool interesting = !info.physicsXml.empty() || info.formID == 0x14;
@@ -88,7 +92,7 @@ namespace FO4SMP::AttachHook
 					info.objectName, info.model,
 					info.physicsXml.empty() ? "" : ", physics ",
 					info.physicsXml,
-					result ? std::format("'{}'", result->name.c_str() ? result->name.c_str() : "") : std::string{ "nothing" });
+					result ? std::format("'{}' ({})", result->name.c_str() ? result->name.c_str() : "", hdt::fo4::ClassName(result)) : std::string{ "nothing" });
 				if (g_logged == kMaxLogged) {
 					logger::info("Attach: {} attaches logged (all with physics, the player's, the first 60 others); not logging more", kMaxLogged);
 				}
@@ -152,11 +156,28 @@ namespace FO4SMP::AttachHook
 		return g_installed;
 	}
 
+	std::vector<Attach> PhysicsAttachesOf(std::uint32_t a_formID)
+	{
+		std::scoped_lock guard{ g_lock };
+		std::vector<Attach> out;
+		for (const auto& a : g_recent) {
+			if (a.formID == a_formID && !a.firstPerson && !a.physicsXml.empty() && a.attached) {
+				out.push_back(a);
+			}
+		}
+		return out;
+	}
+
+	std::uint32_t PlayerPhysicsGeneration()
+	{
+		return g_playerGeneration.load();
+	}
+
 	bool FindByAttachedNode(RE::NiAVObject* a_node, Attach& a_out)
 	{
 		std::scoped_lock guard{ g_lock };
 		for (auto it = g_recent.rbegin(); it != g_recent.rend(); ++it) {
-			if (it->attached == a_node) {
+			if (it->attached.get() == a_node) {
 				a_out = *it;
 				return true;
 			}

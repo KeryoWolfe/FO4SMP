@@ -1,5 +1,6 @@
 #include "PlayerPhysics.h"
 
+#include "AttachHook.h"
 #include "Console.h"
 #include "Offsets.h"
 #include "PhysicsWorld.h"
@@ -618,10 +619,13 @@ namespace FO4SMP::PlayerPhysics
 		};
 		std::unordered_map<std::string, NifInfo> g_nifCache;
 
-		const NifInfo* FindNif(const std::string& a_xml, const std::vector<std::string>& a_shapes)
+		const NifInfo* FindNif(const std::string& a_xml, const std::vector<std::string>& a_shapes, const std::string& a_nif = {})
 		{
 			std::filesystem::path xml{ a_xml };
 			std::vector<std::string> paths;
+			if (!a_nif.empty()) {
+				paths.push_back(a_nif);  // the attached model's own NIF (milestone 4), tried first
+			}
 			auto withNif = xml;
 			withNif.replace_extension(".nif");
 			paths.push_back(withNif.string());
@@ -716,7 +720,61 @@ namespace FO4SMP::PlayerPhysics
 			RE::NiAVObject* model;
 			std::string file;
 			std::string source;
+			std::string nif;  // the model's NIF when known (from the attach), else ""
 		};
+
+		// Names of the skinned shapes under a_object.
+		std::vector<std::string> SkinnedShapeNames(RE::NiAVObject* a_object)
+		{
+			std::vector<std::string> names;
+			std::function<void(RE::NiAVObject*, int)> walk = [&](RE::NiAVObject* a_o, int a_depth) {
+				if (!a_o || a_depth > 64) {
+					return;
+				}
+				if (auto* tri = hdt::castBSTriShape(a_o)) {
+					hdt::fo4::SkinnedShape probe;
+					if (hdt::fo4::ReadSkinnedShape(tri, probe, false).empty()) {
+						names.emplace_back(tri->name.c_str());
+					}
+				}
+				if (auto* n = hdt::castNiNode(a_o)) {
+					for (auto& child : hdt::fo4::Children(n)) {
+						walk(child.get(), a_depth + 1);
+					}
+				}
+			};
+			walk(a_object, 0);
+			return names;
+		}
+
+		// Milestone 4: the player's physics from the attach hook: each third-person attach on the player that
+		// named a physics XML and is still under the player's 3D. One per XML: an A-Body-refitted armor piece
+		// names the body's XML too, so the attach with the most skinned shapes (the body, with its Virtual*
+		// collision shapes) wins.
+		std::vector<Candidate> AttachCandidates(RE::NiAVObject* a_root)
+		{
+			std::map<std::string, std::pair<Candidate, std::size_t>> best;
+			for (const auto& a : AttachHook::PhysicsAttachesOf(0x14)) {
+				if (!IsAttachedUnder(a.attached.get(), a_root)) {
+					continue;
+				}
+				const auto shapes = SkinnedShapeNames(a.attached.get()).size();
+				std::string key = a.physicsXml;
+				std::ranges::transform(key, key.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+				Candidate c{ a.attached.get(), a.physicsXml, std::format("the attach of '{}' (slot {}, {} skinned shapes)", a.model, a.bipedIndex, shapes),
+					a.model.empty() ? std::string{} : (std::filesystem::path{ "Meshes" } / a.model).string() };
+				if (auto it = best.find(key); it == best.end() || shapes >= it->second.second) {
+					best[key] = { std::move(c), shapes };
+				}
+			}
+			std::vector<Candidate> out;
+			for (auto& [key, entry] : best) {
+				if (entry.second > 0) {
+					out.push_back(std::move(entry.first));
+				}
+			}
+			return out;
+		}
 
 		void Walk(RE::NiAVObject* a_root, RE::NiAVObject* a_object, const hdt::DefaultBBPList& a_defaults, std::vector<Candidate>& a_out, bool a_log, int a_depth)
 		{
@@ -776,6 +834,11 @@ namespace FO4SMP::PlayerPhysics
 			g_unresolvedShapes.clear();
 			g_waiting = false;
 			Walk(a_root, a_root, a_defaults, candidates, log, 0);
+			// Milestone 4: what the attach hook saw wins over the scan (extra data is gone after the attach, and
+			// defaultBBPs.xml was a stand-in); the scan stays as the fallback.
+			if (auto fromAttaches = AttachCandidates(a_root); !fromAttaches.empty()) {
+				candidates = std::move(fromAttaches);
+			}
 			// Only the shapes the physics will be built from count (the head's or a weapon's don't).
 			std::uint32_t g_unresolved = 0;
 			for (const auto& [shape, count] : g_unresolvedShapes) {
@@ -807,7 +870,8 @@ namespace FO4SMP::PlayerPhysics
 			}
 
 			// As FSMP: a model's own extra data wins; defaultBBPs.xml only covers shapes when nothing names a file.
-			const bool haveExtraData = std::ranges::any_of(candidates, [](const Candidate& c) { return c.source.starts_with("extra data"); });
+			const bool haveExtraData = std::ranges::any_of(candidates, [](const Candidate& c) { return c.source.starts_with("extra data"); }) &&
+			                           !std::ranges::any_of(candidates, [](const Candidate& c) { return c.source.starts_with("the attach"); });
 			std::set<std::pair<RE::NiAVObject*, std::string>> seen;
 			for (const auto& c : candidates) {
 				if (haveExtraData && !c.source.starts_with("extra data")) {
@@ -819,25 +883,8 @@ namespace FO4SMP::PlayerPhysics
 				}
 				logger::info("Player physics: building {} from {} (model node '{}')", c.file, c.source, c.model->name.c_str());
 				// The outfit's NIF: skin bone names for the null entries, and the added bones' places.
-				std::vector<std::string> nifShapes;
-				std::function<void(RE::NiAVObject*, int)> skinned = [&](RE::NiAVObject* a_object, int a_depth) {
-					if (!a_object || a_depth > 64) {
-						return;
-					}
-					if (auto* tri = hdt::castBSTriShape(a_object)) {
-						hdt::fo4::SkinnedShape probe;
-						if (hdt::fo4::ReadSkinnedShape(tri, probe, false).empty()) {
-							nifShapes.emplace_back(tri->name.c_str());
-						}
-					}
-					if (auto* n = hdt::castNiNode(a_object)) {
-						for (auto& child : hdt::fo4::Children(n)) {
-							skinned(child.get(), a_depth + 1);
-						}
-					}
-				};
-				skinned(c.model, 0);
-				const NifInfo* nif = FindNif(c.file, nifShapes);
+				const std::vector<std::string> nifShapes = SkinnedShapeNames(c.model);
+				const NifInfo* nif = FindNif(c.file, nifShapes, c.nif);
 				g_usingNifPlacement = nif && !nif->nodes.empty();
 				if (g_usingNifPlacement) {
 					PlaceAddedBonesFromNif(skeleton, *nif);
@@ -877,6 +924,18 @@ namespace FO4SMP::PlayerPhysics
 	{
 		const auto now = std::chrono::steady_clock::now();
 		auto* root = PlayerRoot();
+
+		// Milestone 4: a new third-person attach on the player that names physics (outfit change, 3D reload)
+		// rebuilds the player's physics once the attach settles.
+		static std::uint32_t s_generation = AttachHook::PlayerPhysicsGeneration();
+		if (const auto generation = AttachHook::PlayerPhysicsGeneration(); generation != s_generation) {
+			s_generation = generation;
+			if (root == g_root) {
+				Drop("a physics outfit attached to the player");
+				g_reportedEmpty = false;
+				g_nextCheck = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(kScanDelaySeconds));
+			}
+		}
 
 		if (root != g_root) {
 			Drop("the player's 3D changed");

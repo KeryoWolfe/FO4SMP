@@ -8,11 +8,8 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
-namespace RE
-{
-	class NiAVObject;
-}
 
 namespace FO4SMP::AttachHook
 {
@@ -29,9 +26,16 @@ namespace FO4SMP::AttachHook
 		std::string    objectName;     // the object's root node name
 		std::string    model;          // TESModel path of the biped slot (relative to Meshes\), "" if none
 		std::string    physicsXml;     // the root's "HDT Skinned Mesh Physics Object", "" if none
-		RE::NiAVObject* attached = nullptr;  // what AttachSkinnedObject returned
+		RE::NiPointer<RE::NiAVObject> attached;  // what AttachSkinnedObject returned (kept alive while recorded)
 	};
 
 	// Copies the most recent attach that returned a_node into a_out; false if none is recorded. Thread-safe.
 	bool FindByAttachedNode(RE::NiAVObject* a_node, Attach& a_out);
+
+	// The recorded attaches of actor a_formID that name a physics XML (third person only), oldest first. Thread-safe.
+	std::vector<Attach> PhysicsAttachesOf(std::uint32_t a_formID);
+
+	// Counts third-person attaches on the player that name a physics XML; a change means the player's physics
+	// should be rebuilt.
+	std::uint32_t PlayerPhysicsGeneration();
 }
