@@ -154,6 +154,7 @@ namespace hdt
 			if (distance < 0.0f || distance > kMaxDistanceFromParent) {
 				++g_rejectedWrites;
 				g_explosion = true;
+				m_exploded = true;
 				// The first 60 rejections are logged (any bone), with the speed the bone had, to see how explosions start.
 				static int s_logged = 0;
 				if (s_logged < 60) {

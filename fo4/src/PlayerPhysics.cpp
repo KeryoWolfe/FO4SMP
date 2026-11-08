@@ -943,17 +943,40 @@ namespace FO4SMP::PlayerPhysics
 		int g_maxActive = 5;                       // smp.maximumActiveSkeletons: the player and up to this many minus one NPCs
 		constexpr float kNpcMaxDistance = 2000.0f;  // game units (about 28 m); NPCs farther away aren't simulated
 		constexpr double kSelectSeconds = 1.0;      // how often the simulated NPCs are chosen again
+		constexpr float kNpcKeepBonus = 500.0f;     // selection hysteresis, game units
 
 		RE::NiAVObject* RootOf(const ActorState& a_state)
 		{
 			return a_state.isPlayer ? PlayerRoot() : AttachHook::Loaded3D(a_state.handle);
 		}
 
-		// After an explosion: every simulated bone of every actor back on its rest pose, at rest.
-		void ResetAfterExplosion()
+		// NPCs whose physics keeps exploding (a corpse in a ragdoll pose, a body the XML doesn't suit) are dropped
+		// for a while: more than kQuarantineResets resets within kQuarantineWindow seconds -> kQuarantineSeconds off.
+		constexpr int    kQuarantineResets = 3;
+		constexpr double kQuarantineWindow = 10.0;
+		constexpr double kQuarantineSeconds = 60.0;
+		std::unordered_map<std::uint32_t, std::vector<std::chrono::steady_clock::time_point>> g_resetTimes;
+		std::unordered_map<std::uint32_t, std::chrono::steady_clock::time_point> g_quarantined;  // until
+
+		// After an explosion: the simulated bones of the actor(s) whose bones exploded back on their rest pose, at
+		// rest. Only those actors: resetting everyone made the player's penis snap straight and shake whenever a
+		// nearby NPC's exploded (run 32).
+		void ResetAfterExplosion(std::chrono::steady_clock::time_point a_now)
 		{
 			++g_systemResets;
+			std::vector<std::uint32_t> quarantine;
 			for (auto& [id, state] : g_actors) {
+				bool exploded = false;
+				for (const auto& b : state.built) {
+					for (auto& bone : b.system->getBones()) {
+						auto* fb = static_cast<hdt::Fo4Bone*>(bone.get());
+						exploded |= fb->m_exploded;
+						fb->m_exploded = false;
+					}
+				}
+				if (!exploded) {
+					continue;
+				}
 				g_current = &state;
 				// Bullet disables ("breaks") a constraint whose impulse reaches its breaking threshold (infinite by
 				// default); an exploded step gives infinite impulses, so the joints would stay off for good and the
@@ -986,6 +1009,21 @@ namespace FO4SMP::PlayerPhysics
 						fb->readTransform(hdt::RESET_PHYSICS);
 					}
 				}
+				if (!state.isPlayer) {
+					auto& times = g_resetTimes[id];
+					times.push_back(a_now);
+					std::erase_if(times, [&](auto t) { return std::chrono::duration<double>(a_now - t).count() > kQuarantineWindow; });
+					if (static_cast<int>(times.size()) > kQuarantineResets) {
+						quarantine.push_back(id);
+					}
+				}
+			}
+			for (const auto id : quarantine) {
+				g_current = &g_actors[id];
+				Drop(std::format("exploded more than {} times in {:.0f} s; off for {:.0f} s", kQuarantineResets, kQuarantineWindow, kQuarantineSeconds));
+				g_quarantined[id] = a_now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(kQuarantineSeconds));
+				g_resetTimes.erase(id);
+				g_actors.erase(id);
 			}
 		}
 
@@ -1057,13 +1095,14 @@ namespace FO4SMP::PlayerPhysics
 
 		// Milestone 4: which NPCs are simulated: those the attach hook saw with physics, with 3D loaded, within
 		// kNpcMaxDistance of the player, nearest first, up to g_maxActive - 1. The rest are dropped.
-		void SelectNpcs(RE::NiAVObject* a_playerRoot, const std::vector<AttachHook::PhysicsActor>& a_actors)
+		void SelectNpcs(RE::NiAVObject* a_playerRoot, const std::vector<AttachHook::PhysicsActor>& a_actors, std::chrono::steady_clock::time_point a_now)
 		{
+			std::erase_if(g_quarantined, [&](const auto& e) { return a_now >= e.second; });
 			std::vector<std::pair<float, const AttachHook::PhysicsActor*>> nearby;
 			if (a_playerRoot && g_maxActive > 1) {
 				const auto& p = a_playerRoot->world.translate;
 				for (const auto& a : a_actors) {
-					if (a.formID == 0x14) {
+					if (a.formID == 0x14 || g_quarantined.contains(a.formID)) {
 						continue;
 					}
 					auto* root = AttachHook::Loaded3D(a.handle);
@@ -1071,9 +1110,13 @@ namespace FO4SMP::PlayerPhysics
 						continue;
 					}
 					const auto& q = root->world.translate;
-					const float d = std::sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) + (p.z - q.z) * (p.z - q.z));
-					if (d <= kNpcMaxDistance) {
-						nearby.push_back({ d, &a });
+					float d = std::sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) + (p.z - q.z) * (p.z - q.z));
+					// Hysteresis: an NPC already simulated keeps its place until it is kNpcKeepBonus farther than
+					// a newcomer, and up to kNpcMaxDistance + kNpcKeepBonus away (run 32: 303 drops and rebuilds as
+					// NPCs crossed the 2,000-unit line or swapped places in the nearest four).
+					const bool active = g_actors.contains(a.formID);
+					if (d <= kNpcMaxDistance + (active ? kNpcKeepBonus : 0.0f)) {
+						nearby.push_back({ active ? std::max(0.0f, d - kNpcKeepBonus) : d, &a });
 					}
 				}
 				std::ranges::sort(nearby, {}, &decltype(nearby)::value_type::first);
@@ -1090,7 +1133,7 @@ namespace FO4SMP::PlayerPhysics
 					state.formID = a->formID;
 					state.handle = a->handle;
 					state.generation = a->generation;
-					logger::info("NPC {:08X} physics: selected ({:.0f} units from the player)", a->formID, d);
+					logger::info("NPC {:08X} physics: selected (about {:.0f} units from the player)", a->formID, d);
 				}
 			}
 			for (auto it = g_actors.begin(); it != g_actors.end();) {
@@ -1133,12 +1176,12 @@ namespace FO4SMP::PlayerPhysics
 		auto* playerRoot = PlayerRoot();
 		static auto nextSelect = now;
 		if (now >= nextSelect) {
-			SelectNpcs(playerRoot, actors);
+			SelectNpcs(playerRoot, actors, now);
 			nextSelect = now + Seconds(kSelectSeconds);
 		}
 
 		if (hdt::Fo4Bone::TakeExplosion()) {
-			ResetAfterExplosion();
+			ResetAfterExplosion(now);
 		}
 
 		for (auto& [id, state] : g_actors) {

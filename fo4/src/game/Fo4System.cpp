@@ -230,6 +230,105 @@ namespace hdt
 		return name;
 	}
 
+	namespace
+	{
+		// FSMP reads a physics XML in one pass, and a shape that names a bone not yet defined creates it with the
+		// default (kinematic) template; the <bone> that comes later is then skipped ("Bone ... already exists").
+		// TWB SMP's XML lists its shapes before its bones, so its breasts and buttocks were never simulated (run 32:
+		// 89 bones, 1 simulated). FO4 Faster HDT-SMP simulates them, so it doesn't depend on the order either.
+		// Moves every top-level <bone-default> and <bone> element (in their order) to the start of <system>;
+		// everything else keeps its order. Returns how many elements moved ahead of something.
+		int BonesFirst(std::string& a_xml)
+		{
+			const auto systemOpen = a_xml.find("<system");
+			if (systemOpen == std::string::npos) {
+				return 0;
+			}
+			const auto bodyStart = a_xml.find('>', systemOpen);
+			const auto systemClose = a_xml.rfind("</system>");
+			if (bodyStart == std::string::npos || systemClose == std::string::npos || systemClose <= bodyStart) {
+				return 0;
+			}
+
+			// The end of the element starting at a_pos ('<'), or npos if malformed.
+			auto elementEnd = [&](std::size_t a_pos) -> std::size_t {
+				int depth = 0;
+				std::size_t i = a_pos;
+				while (i < systemClose) {
+					if (a_xml.compare(i, 4, "<!--") == 0) {
+						const auto e = a_xml.find("-->", i + 4);
+						if (e == std::string::npos) {
+							return std::string::npos;
+						}
+						i = e + 3;
+						continue;
+					}
+					if (a_xml[i] == '<') {
+						const auto close = a_xml.find('>', i);
+						if (close == std::string::npos) {
+							return std::string::npos;
+						}
+						if (a_xml[i + 1] == '/') {
+							--depth;
+						} else if (a_xml[i + 1] != '?' && a_xml[i + 1] != '!' && a_xml[close - 1] != '/') {
+							++depth;
+						}
+						i = close + 1;
+						if (depth == 0) {
+							return i;
+						}
+						continue;
+					}
+					++i;
+				}
+				return std::string::npos;
+			};
+
+			std::string bones, rest;
+			int moved = 0;
+			bool seenOther = false;
+			std::size_t i = bodyStart + 1;
+			while (i < systemClose) {
+				if (a_xml.compare(i, 4, "<!--") == 0) {
+					const auto e = a_xml.find("-->", i + 4);
+					if (e == std::string::npos) {
+						return 0;
+					}
+					rest.append(a_xml, i, e + 3 - i);
+					i = e + 3;
+					continue;
+				}
+				if (a_xml[i] == '<') {
+					const auto end = elementEnd(i);
+					if (end == std::string::npos) {
+						return 0;  // leave a malformed file to the reader's own errors
+					}
+					std::size_t n = i + 1;
+					while (n < end && !std::isspace(static_cast<unsigned char>(a_xml[n])) && a_xml[n] != '>' && a_xml[n] != '/') {
+						++n;
+					}
+					const auto name = std::string_view{ a_xml }.substr(i + 1, n - i - 1);
+					if (name == "bone" || name == "bone-default") {
+						bones.append(a_xml, i, end - i);
+						bones += '\n';
+						moved += seenOther ? 1 : 0;
+					} else {
+						rest.append(a_xml, i, end - i);
+						seenOther = true;
+					}
+					i = end;
+					continue;
+				}
+				rest += a_xml[i];
+				++i;
+			}
+			if (moved) {
+				a_xml = a_xml.substr(0, bodyStart + 1) + "\n" + bones + rest + a_xml.substr(systemClose);
+			}
+			return moved;
+		}
+	}
+
 	RE::BSTSmartPointer<Fo4System> Fo4SystemCreator::createOrUpdateSystem(RE::NiNode* skeleton, RE::NiAVObject* model, DefaultBBP::PhysicsFile_t* file, std::unordered_map<RE::BSFixedString, RE::BSFixedString>&& renameMap, Fo4System* old_system)
 	{
 		auto path = file->first;
@@ -253,6 +352,9 @@ namespace hdt
 		}
 		if (loaded.empty()) {
 			return nullptr;
+		}
+		if (const int moved = BonesFirst(loaded)) {
+			logger::info("Physics XML {}: {} bone definition(s) came after other elements; read first, so shapes don't make those bones kinematic", path.c_str(), moved);
 		}
 
 		m_renameMap = std::move(renameMap);
