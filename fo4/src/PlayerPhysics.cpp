@@ -463,6 +463,41 @@ namespace FO4SMP::PlayerPhysics
 			}
 		}
 
+		// Logs each collision body's tags and filters, and which body pairs the filters let collide, so a
+		// contact between bodies the XML keeps apart (e.g. VirtualPenis vs VirtualLegs) shows up as a filter bug.
+		void LogCollisionFilter(hdt::Fo4System* a_system)
+		{
+			const auto& meshes = a_system->meshes();
+			auto join = [](const auto& a_set) {
+				std::string out;
+				for (const auto& t : a_set) {
+					out += (out.empty() ? "" : ",") + std::format("{}@{:X}", t.c_str(), reinterpret_cast<std::uintptr_t>(t.data()));
+				}
+				return out;
+			};
+			for (auto& m : meshes) {
+				logger::info("Collision body {}: kinematic {}, {} bones, tags [{}], no-collide-with [{}], can-collide-with [{}], {} no-collide bones",
+					m->m_name.c_str(), m->m_isKinematic, m->m_skinnedBones.size(), join(m->m_tags), join(m->m_noCollideWithTags),
+					join(m->m_canCollideWithTags), m->m_noCollideWithBones.size());
+			}
+			std::string pairs;
+			int count = 0;
+			for (std::size_t i = 0; i < meshes.size(); ++i) {
+				for (std::size_t j = i + 1; j < meshes.size(); ++j) {
+					auto* a = meshes[i].get();
+					auto* b = meshes[j].get();
+					if (a->m_isKinematic && b->m_isKinematic) {
+						continue;
+					}
+					if (a->canCollideWith(b) && b->canCollideWith(a)) {
+						pairs += std::format(" {}/{};", a->m_name.c_str(), b->m_name.c_str());
+						++count;
+					}
+				}
+			}
+			logger::info("Collision filter: {} body pair(s) may collide:{}", count, pairs);
+		}
+
 		void BuildFollow(RE::NiNode* a_skeleton, hdt::Fo4System* a_system)
 		{
 			auto* rootBone = hdt::fo4::findNode(a_skeleton, RE::BSFixedString("Root"));
@@ -830,6 +865,7 @@ namespace FO4SMP::PlayerPhysics
 					c.file, ms, system->getBones().size(), dynamic, system->meshes().size());
 				Console::Print(std::format("FO4SMP: physics on the player from {} ({} bones simulated)", c.file, dynamic));
 
+				LogCollisionFilter(system.get());
 				BuildFollow(skeleton, system.get());
 				PhysicsWorld::Get()->AddSystem(system.get());
 				g_built.push_back({ system, RE::NiPointer<RE::NiAVObject>(c.model), c.file });
