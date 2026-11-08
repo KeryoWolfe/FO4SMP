@@ -1,4 +1,5 @@
 #include "FrameHook.h"
+#include "game/Fo4Bone.h"
 
 #include "Offsets.h"
 #include "PhysicsWorld.h"
@@ -32,8 +33,8 @@ namespace FO4SMP::FrameHook
 				return;
 			}
 			if (g_frames > 0) {
-				logger::info("Frame step: {} frames in {:.1f} s ({:.1f} fps); physics step average {:.3f} ms, longest {:.3f} ms",
-					g_frames, span, g_frames / span, g_stepMsTotal / g_frames, g_stepMsMax);
+				logger::info("Frame step: {} frames in {:.1f} s ({:.1f} fps); physics step average {:.3f} ms, longest {:.3f} ms{}",
+					g_frames, span, g_frames / span, g_stepMsTotal / g_frames, g_stepMsMax, hdt::Fo4Bone::TakeWriteReport());
 			}
 			g_reportStart = a_now;
 			g_frames = 0;

@@ -5,6 +5,8 @@
 
 #include "hdtSkinnedMesh/hdtSkinnedMeshWorld.h"  // RESET_PHYSICS
 
+#include <cmath>
+
 namespace hdt
 {
 	Fo4Bone::Fo4Bone(const RE::BSFixedString& name, RE::NiNode* node, RE::NiNode* skeleton, btRigidBody::btRigidBodyConstructionInfo& ci) :
@@ -93,9 +95,69 @@ namespace hdt
 		//}
 	}
 
+	namespace
+	{
+		bool Finite(const btTransform& a_t)
+		{
+			const auto& b = a_t.getBasis();
+			const auto& o = a_t.getOrigin();
+			for (int i = 0; i < 3; ++i) {
+				if (!std::isfinite(o[i]) || !std::isfinite(b[i][0]) || !std::isfinite(b[i][1]) || !std::isfinite(b[i][2])) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		// Written on the main thread only (SkinnedMeshWorld::writeTransform is sequential).
+		std::uint32_t g_rejectedWrites = 0;
+		float g_maxDistance = 0.0f;
+		std::string g_maxDistanceBone;
+	}
+
+	std::string Fo4Bone::TakeWriteReport()
+	{
+		std::string report;
+		if (!g_maxDistanceBone.empty()) {
+			report = std::format("; farthest simulated bone {:.1f} units from its parent ({})", g_maxDistance, g_maxDistanceBone);
+		}
+		if (g_rejectedWrites) {
+			report += std::format("; {} bad simulated bone pose(s) rejected", g_rejectedWrites);
+		}
+		g_rejectedWrites = 0;
+		g_maxDistance = 0.0f;
+		g_maxDistanceBone.clear();
+		return report;
+	}
+
 	void Fo4Bone::writeTransform()
 	{
 		auto transform = m_rig.getWorldTransform() * m_rigToLocal;
+
+		// Fallout 4 (diagnostic and guard): a simulated bone that comes out of the step non-finite or far
+		// from its parent would drag its vertices across the map. Don't write it; put it back on the
+		// animated pose, and say which bone it was (once per bone).
+		if (m_node->parent) {
+			const auto& p = m_node->parent->world.translate;
+			const btVector3 parentPos(p.x, p.y, p.z);
+			const float distance = Finite(transform) ? (transform.getOrigin() - parentPos).length() : -1.0f;
+			if (distance < 0.0f || distance > kMaxDistanceFromParent) {
+				++g_rejectedWrites;
+				if (!m_reportedBadWrite) {
+					m_reportedBadWrite = true;
+					const auto& o = transform.getOrigin();
+					logger::warn("Bone {}: simulated pose {} (at {:.1f}, {:.1f}, {:.1f}, parent '{}' at {:.1f}, {:.1f}, {:.1f}); not written, reset to the animated pose (reported once)",
+						m_name.c_str(), distance < 0.0f ? "isn't finite" : std::format("is {:.0f} units from its parent", distance),
+						o.x(), o.y(), o.z(), m_node->parent->name.c_str(), p.x, p.y, p.z);
+				}
+				readTransform(RESET_PHYSICS);
+				return;
+			}
+			if (distance > g_maxDistance) {
+				g_maxDistance = distance;
+				g_maxDistanceBone = m_name.c_str();
+			}
+		}
 
 		m_currentTransform.setBasis(transform.getBasis());
 		m_currentTransform.setOrigin(transform.getOrigin());
