@@ -134,6 +134,15 @@ namespace FO4SMP::PlayerPhysics
 			}
 			for (auto& bone : system->getBones()) {
 				auto* b = static_cast<hdt::Fo4Bone*>(bone.get());
+				const auto& w = b->m_node->world.translate;
+				const float off = (b->m_currentTransform.getOrigin() - btVector3(w.x, w.y, w.z)).length();
+				if (b->m_rig.isStaticOrKinematicObject() && off > 1.0f) {
+					logger::info("  kinematic bone {} (parent '{}'): FSMP's copy {:.1f} units from the node", b->m_name.c_str(),
+						b->m_node->parent ? b->m_node->parent->name.c_str() : "none", off);
+				}
+			}
+			for (auto& bone : system->getBones()) {
+				auto* b = static_cast<hdt::Fo4Bone*>(bone.get());
 				if (b->m_rig.isStaticOrKinematicObject()) {
 					continue;
 				}

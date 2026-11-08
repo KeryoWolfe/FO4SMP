@@ -230,23 +230,15 @@ namespace hdt::fo4
 		return r;
 	}
 
-	// Recomputes world transforms below a_object from their local transforms (FSMP's updateTransformUpDown,
-	// done in plain math instead of the engine's virtual update).
-	inline void updateTransformUpDown(RE::NiAVObject* a_object, bool /*a_dirty*/)
+	// FSMP's updateTransformUpDown recomputes world transforms below a node through the engine's own
+	// update. Fallout 4: deliberately a no-op. Skeleton bones are driven through BSFlattenedBoneTree, so
+	// the NiNode::local transforms of the skeleton (and of the extra bones an outfit adds, such as A-Body's
+	// *_SMP bones) aren't the ones the engine uses; recomputing world transforms from them appears to be
+	// what put those bones at the Root bone (milestone 3, run 7), so the physics was built and reset from
+	// wrong poses.
+	// FO4SMP runs after the game's frame update, so the world transforms it reads are already current.
+	inline void updateTransformUpDown(RE::NiAVObject* /*a_object*/, bool /*a_dirty*/)
 	{
-		if (!a_object) {
-			return;
-		}
-		if (a_object->parent) {
-			a_object->world = Compose(a_object->parent->world, a_object->local);
-		}
-		if (auto* node = castNiNode(a_object)) {
-			for (auto& child : Children(node)) {
-				if (child) {
-					updateTransformUpDown(child.get(), false);
-				}
-			}
-		}
 	}
 }
 
