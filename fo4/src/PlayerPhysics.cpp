@@ -161,8 +161,8 @@ namespace FO4SMP::PlayerPhysics
 		// Until the attach hooks (milestone 4), put each such bone where the skin's bind data says it
 		// is, relative to the nearest real bone of the same shape:
 		//   world(X) = world(R) * skinToBone(R) * skinToBone(X)^-1
-		// and set its local transform from that. A bone is "added" when its local transform is the
-		// identity and the bind data puts it more than half a unit away from there.
+		// and set its local transform from that. A bone is "added" when it hangs off the Root bone (directly
+		// or through other added bones) and isn't COM; only real bones serve as anchors.
 		void FixAddedBones(RE::NiAVObject* a_model)
 		{
 			struct Shape
@@ -189,11 +189,21 @@ namespace FO4SMP::PlayerPhysics
 			};
 			collect(a_model, 0);
 
+			// Added bones hang off the skeleton's Root bone (directly, or under another added bone); the
+			// only real body bone under Root is COM.
+			auto isAdded = [](RE::NiNode* a_node) {
+				for (auto* n = a_node; n && n->parent; n = n->parent) {
+					if (std::string_view{ n->parent->name.c_str() } == "Root"sv) {
+						return std::string_view{ n->name.c_str() } != "COM"sv;
+					}
+				}
+				return false;
+			};
 			std::unordered_map<RE::NiNode*, int> depth;
 			std::vector<RE::NiNode*> added;
 			for (const auto& shape : shapes) {
 				for (const auto& bone : shape.skin.bones) {
-					if (bone.node && hdt::fo4::IsIdentity(bone.node->local) && !depth.contains(bone.node)) {
+					if (bone.node && isAdded(bone.node) && !depth.contains(bone.node)) {
 						int d = 0;
 						for (auto* n = bone.node; n; n = n->parent) {
 							++d;
@@ -227,7 +237,7 @@ namespace FO4SMP::PlayerPhysics
 					}
 					const auto selfBind = hdt::fo4::Inverse(self->skinToBone).translate;
 					for (const auto& b : shape.skin.bones) {
-						if (!b.node || b.node == node || hdt::fo4::IsIdentity(b.node->local)) {
+						if (!b.node || b.node == node || depth.contains(b.node)) {  // anchors are real bones only
 							continue;
 						}
 						const auto bind = hdt::fo4::Inverse(b.skinToBone).translate;
@@ -268,7 +278,7 @@ namespace FO4SMP::PlayerPhysics
 				logger::info("Player physics: added bone '{}' (parent '{}') moved {:.1f} units to its bind place beside '{}' (shape '{}')",
 					node->name.c_str(), node->parent->name.c_str(), moved, best->node->name.c_str(), bestShape->name);
 			}
-			logger::info("Player physics: {} added bone(s) placed from the bind data ({} with an identity transform checked)", fixed, added.size());
+			logger::info("Player physics: {} added bone(s) placed from the bind data ({} added bones found in the skins)", fixed, added.size());
 		}
 
 		struct Candidate
