@@ -74,7 +74,7 @@ namespace FO4SMP::AttachHook
 			ActorOf(a_biped, info.actor, info.formID);
 
 			auto* result = a_original(a_biped, a_object, a_parent, a_bipedIndex, a_firstPerson);
-			info.attached.reset(result);
+			info.attached = RE::NiPointer<RE::NiAVObject>(result);
 			if (info.formID == 0x14 && !a_firstPerson && !info.physicsXml.empty() && result) {
 				g_playerGeneration.fetch_add(1);
 			}
