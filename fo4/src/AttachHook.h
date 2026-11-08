@@ -21,6 +21,7 @@ namespace FO4SMP::AttachHook
 	{
 		std::uintptr_t actor = 0;      // the actor's TESObjectREFR* (biped root's userData), 0 if unknown
 		std::uint32_t  formID = 0;
+		std::uint32_t  handle = 0;     // BipedAnim::actorRef (ObjectRefHandle)
 		std::uint32_t  bipedIndex = 0;
 		bool           firstPerson = false;
 		std::string    objectName;     // the object's root node name
@@ -35,7 +36,17 @@ namespace FO4SMP::AttachHook
 	// The recorded attaches of actor a_formID that name a physics XML (third person only), oldest first. Thread-safe.
 	std::vector<Attach> PhysicsAttachesOf(std::uint32_t a_formID);
 
-	// Counts third-person attaches on the player that name a physics XML; a change means the player's physics
-	// should be rebuilt.
-	std::uint32_t PlayerPhysicsGeneration();
+	// Every actor seen with a third-person attach that names a physics XML: its handle and how many such
+	// attaches it has had (a change means its physics should be rebuilt). Thread-safe.
+	struct PhysicsActor
+	{
+		std::uint32_t formID = 0;
+		std::uint32_t handle = 0;
+		std::uint32_t generation = 0;
+	};
+	std::vector<PhysicsActor> PhysicsActors();
+
+	// Resolves an ObjectRefHandle to the actor's loaded 3D root (TESObjectREFR::loadedData->data3D); nullptr
+	// if the handle is stale or nothing is loaded. Main thread.
+	RE::NiAVObject* Loaded3D(std::uint32_t a_handle);
 }

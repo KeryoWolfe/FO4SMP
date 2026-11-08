@@ -12,6 +12,7 @@
 #include "Console.h"
 #include "FrameHook.h"
 #include "PhysicsWorld.h"
+#include "PlayerPhysics.h"
 
 namespace
 {
@@ -72,6 +73,7 @@ namespace
 			const double ms = world->SmokeStep();
 			logger::info("Physics world: one empty step took {:.3f} ms", ms);
 			g_worldOK = true;
+			FO4SMP::PlayerPhysics::SetMaxActive(config.maximumActiveSkeletons);
 			FO4SMP::FrameHook::EnableStepping(defaults);
 		} catch (const std::exception& e) {
 			logger::critical("Physics world could not start: {}", e.what());

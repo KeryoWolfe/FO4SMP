@@ -15,7 +15,14 @@ namespace FO4SMP::PlayerPhysics
 	// shape defaultBBPs.xml names) gets an FSMP system built from that physics XML. While systems exist,
 	// they're dropped and rebuilt if the shape they were built from is no longer attached (the body or
 	// outfit changed).
+	//
+	// Milestone 4: also NPCs. The attach hook names every actor whose outfit or body carries a physics XML;
+	// each second the nearest of them with 3D loaded, within 2,000 units, up to smp.maximumActiveSkeletons
+	// minus one, are chosen and get the same treatment from their attaches. NPCs no longer chosen are dropped.
 	void Update(const hdt::DefaultBBPList& a_defaults);
+
+	// smp.maximumActiveSkeletons: the player plus up to this many minus one NPCs.
+	void SetMaxActive(int a_maxActive);
 
 	// Times the simulated bones were all put back on their rest pose after an explosion, since the last call.
 	std::uint32_t TakeSystemResets();

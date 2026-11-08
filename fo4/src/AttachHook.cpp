@@ -12,7 +12,7 @@ namespace FO4SMP::AttachHook
 		Attach_t* g_original1 = nullptr;
 		Attach_t* g_original2 = nullptr;
 		bool      g_installed = false;
-		std::atomic<std::uint32_t> g_playerGeneration{ 0 };
+		std::unordered_map<std::uint32_t, PhysicsActor> g_actors;  // under g_lock
 
 		std::mutex          g_lock;
 		std::vector<Attach> g_recent;  // newest last; bounded
@@ -39,10 +39,13 @@ namespace FO4SMP::AttachHook
 			return model ? std::string{ model } : std::string{};
 		}
 
-		void ActorOf(void* a_biped, std::uintptr_t& a_actor, std::uint32_t& a_formID)
+		using Lookup_t = bool(const std::uint32_t&, RE::NiPointer<RE::TESObjectREFR>&);
+
+		void ActorOf(void* a_biped, std::uintptr_t& a_actor, std::uint32_t& a_formID, std::uint32_t& a_handle)
 		{
 			a_actor = 0;
 			a_formID = 0;
+			a_handle = 0;
 			if (!a_biped) {
 				return;
 			}
@@ -51,7 +54,7 @@ namespace FO4SMP::AttachHook
 			if (!handle) {
 				return;
 			}
-			using Lookup_t = bool(const std::uint32_t&, RE::NiPointer<RE::TESObjectREFR>&);
+			a_handle = handle;
 			static REL::Relocation<Lookup_t*> lookup{ Offsets::LookupREFRByHandle };
 			RE::NiPointer<RE::TESObjectREFR> ref;
 			if (lookup(handle, ref) && ref) {
@@ -71,15 +74,18 @@ namespace FO4SMP::AttachHook
 				info.physicsXml = std::string{ hdt::fo4::StringExtraData(a_object, "HDT Skinned Mesh Physics Object"sv) };
 			}
 			info.model = ModelPath(a_biped, a_bipedIndex);
-			ActorOf(a_biped, info.actor, info.formID);
+			ActorOf(a_biped, info.actor, info.formID, info.handle);
 
 			auto* result = a_original(a_biped, a_object, a_parent, a_bipedIndex, a_firstPerson);
 			info.attached = RE::NiPointer<RE::NiAVObject>(result);
-			if (info.formID == 0x14 && !a_firstPerson && !info.physicsXml.empty() && result) {
-				g_playerGeneration.fetch_add(1);
-			}
 
 			std::scoped_lock guard{ g_lock };
+			if (info.formID && info.handle && !a_firstPerson && !info.physicsXml.empty() && result) {
+				auto& actor = g_actors[info.formID];
+				actor.formID = info.formID;
+				actor.handle = info.handle;
+				++actor.generation;
+			}
 			const bool interesting = !info.physicsXml.empty() || info.formID == 0x14;
 			static int s_others = 0;
 			if (g_logged < kMaxLogged && (interesting || s_others < 60)) {
@@ -168,9 +174,30 @@ namespace FO4SMP::AttachHook
 		return out;
 	}
 
-	std::uint32_t PlayerPhysicsGeneration()
+	std::vector<PhysicsActor> PhysicsActors()
 	{
-		return g_playerGeneration.load();
+		std::scoped_lock guard{ g_lock };
+		std::vector<PhysicsActor> out;
+		out.reserve(g_actors.size());
+		for (const auto& [id, actor] : g_actors) {
+			out.push_back(actor);
+		}
+		return out;
+	}
+
+	RE::NiAVObject* Loaded3D(std::uint32_t a_handle)
+	{
+		if (!a_handle) {
+			return nullptr;
+		}
+		static REL::Relocation<Lookup_t*> lookup{ Offsets::LookupREFRByHandle };
+		RE::NiPointer<RE::TESObjectREFR> ref;
+		if (!lookup(a_handle, ref) || !ref) {
+			return nullptr;
+		}
+		// TESObjectREFR::loadedData (+0xF0), its 3D at +0x08 (F4SE GameReferences.h; CommonLibF4 agrees).
+		const auto loaded = *reinterpret_cast<const std::uintptr_t*>(reinterpret_cast<std::uintptr_t>(ref.get()) + 0xF0);
+		return loaded ? *reinterpret_cast<RE::NiAVObject* const*>(loaded + 0x08) : nullptr;
 	}
 
 	bool FindByAttachedNode(RE::NiAVObject* a_node, Attach& a_out)

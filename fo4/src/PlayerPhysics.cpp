@@ -26,8 +26,6 @@ namespace FO4SMP::PlayerPhysics
 			std::string file;
 		};
 
-		RE::NiAVObject* g_root = nullptr;  // only compared, never dereferenced once stale
-		std::vector<Built> g_built;
 
 		// Diagnostic: for each added bone placed from the bind data, its anchor and its pose relative to the
 		// anchor at placement, to tell how far the simulation turns it away from its rest pose.
@@ -36,7 +34,6 @@ namespace FO4SMP::PlayerPhysics
 			RE::NiNode* anchor;
 			RE::NiTransform relative;
 		};
-		std::unordered_map<RE::NiNode*, Rest> g_rest;
 
 		// Fallout 4: the added bones hang off Root, so the kinematic ones (Penis_01_Offset > Penis_01,
 		// Penis_Balls_01, Anus_00_SMP > Anus_0x...) follow the feet, not the hips: when the pelvis moves in
@@ -50,22 +47,41 @@ namespace FO4SMP::PlayerPhysics
 			RE::NiNode* anchor;
 			RE::NiTransform relative;
 		};
-		std::vector<Follow> g_follow;
-		bool g_usingNifPlacement = false;
-		std::vector<RE::NiNode*> g_restOrder;  // placed added bones, parents first
+		// Milestone 4: everything above, per actor (the player and the NPCs being simulated).
+		struct ActorState
+		{
+			std::uint32_t formID = 0;
+			std::uint32_t handle = 0;  // the actor's ObjectRefHandle (NPCs), from the attach hook
+			bool isPlayer = false;
+			std::uint32_t generation = 0;  // the attach hook's count of this actor's physics attaches at the last build
+
+			RE::NiAVObject* root = nullptr;  // only compared, never dereferenced once stale
+			std::vector<Built> built;
+			std::unordered_map<RE::NiNode*, Rest> rest;
+			std::vector<Follow> follow;
+			bool usingNifPlacement = false;
+			std::vector<RE::NiNode*> restOrder;  // placed added bones, parents first
+			RE::NiNode* rootBone = nullptr;
+			std::chrono::steady_clock::time_point nextCheck{};
+			bool reportedEmpty = false;
+			std::chrono::steady_clock::time_point rootSince{};
+			std::vector<std::pair<RE::NiAVObject*, std::uint32_t>> unresolvedShapes;  // per shape, filled by Walk
+			bool waiting = false;
+		};
+		std::map<std::uint32_t, ActorState> g_actors;  // by form ID; the player is 0x14
+		ActorState* g_current = nullptr;               // the actor the functions below work on
+
+		ActorState& S() { return *g_current; }
+		bool Verbose() { return g_current && g_current->isPlayer; }  // per-bone lines for the player only
+		std::string Label() { return !g_current || g_current->isPlayer ? std::string{ "Player physics" } : std::format("NPC {:08X} physics", g_current->formID); }
+
 		std::uint32_t g_systemResets = 0;
-		RE::NiNode* g_rootBone = nullptr;
-		std::chrono::steady_clock::time_point g_nextCheck{};
-		bool g_reportedEmpty = false;
 
 		// Fallout 4: the skins of shapes the game doesn't draw (A-Body's Virtual* collision shapes) start with
 		// null bone entries (run 20: VirtualHands 36 of 38, VirtualArms 18 of 28) and appear to get them
 		// later (run 2's second build, after an outfit change, found bones its first build hadn't). Building
 		// then leaves the collision surfaces on a few bones. Wait for them, up to kBoneWaitSeconds.
 		constexpr double kBoneWaitSeconds = 30.0;
-		std::chrono::steady_clock::time_point g_rootSince{};
-		std::vector<std::pair<RE::NiAVObject*, std::uint32_t>> g_unresolvedShapes;  // per shape, filled by Walk
-		bool g_waiting = false;
 
 		RE::NiAVObject* PlayerRoot()
 		{
@@ -86,18 +102,18 @@ namespace FO4SMP::PlayerPhysics
 
 		void Drop(std::string_view a_why)
 		{
-			if (g_built.empty()) {
+			if (S().built.empty()) {
 				return;
 			}
-			for (auto& b : g_built) {
+			for (auto& b : S().built) {
 				PhysicsWorld::Get()->RemoveSystem(b.system.get());
 			}
-			logger::info("Player physics: dropped {} system(s) ({})", g_built.size(), a_why);
-			g_built.clear();
-			g_rest.clear();
-			g_restOrder.clear();
-			g_follow.clear();
-			g_rootBone = nullptr;
+			logger::info("{}: dropped {} system(s) ({})", Label(), S().built.size(), a_why);
+			S().built.clear();
+			S().rest.clear();
+			S().restOrder.clear();
+			S().follow.clear();
+			S().rootBone = nullptr;
 		}
 
 		bool IsAttachedUnder(RE::NiAVObject* a_object, RE::NiAVObject* a_root)
@@ -216,8 +232,8 @@ namespace FO4SMP::PlayerPhysics
 			}
 			for (auto& bone : system->getBones()) {
 				auto* b = static_cast<hdt::Fo4Bone*>(bone.get());
-				const auto it = g_rest.find(b->m_node.get());
-				if (it == g_rest.end()) {
+				const auto it = S().rest.find(b->m_node.get());
+				if (it == S().rest.end()) {
 					continue;
 				}
 				// How far the bone is turned and moved from its rest pose beside its anchor.
@@ -358,7 +374,7 @@ namespace FO4SMP::PlayerPhysics
 							top += std::format("{}'{}' {:.1f}", r ? ", " : "", shape.skin.bones[order[r]].node->name.c_str(), score[order[r]]);
 						}
 						if (!top.empty()) {
-							logger::info("Player physics:   '{}' in '{}': shared skin weight with {}", node->name.c_str(), shape.name, top);
+							if (Verbose()) logger::info("{}:   '{}' in '{}': shared skin weight with {}", Label(), node->name.c_str(), shape.name, top);
 						}
 					}
 					for (std::size_t i = 0; i < score.size(); ++i) {
@@ -400,7 +416,7 @@ namespace FO4SMP::PlayerPhysics
 					}
 				}
 				if (!best) {
-					logger::info("Player physics: added bone '{}' has no real bone beside it in any skin; left as it is", node->name.c_str());
+					if (Verbose()) logger::info("{}: added bone '{}' has no real bone beside it in any skin; left as it is", Label(), node->name.c_str());
 					continue;
 				}
 				const auto world = hdt::fo4::Compose(hdt::fo4::Compose(best->node->world, best->skinToBone), hdt::fo4::Inverse(*bindX));
@@ -411,7 +427,7 @@ namespace FO4SMP::PlayerPhysics
 				}
 				node->local = hdt::fo4::LocalFromWorld(node->parent->world, world);
 				node->world = world;
-				g_rest[node] = { best->node, hdt::fo4::LocalFromWorld(best->node->world, world) };
+				S().rest[node] = { best->node, hdt::fo4::LocalFromWorld(best->node->world, world) };
 				// Children follow (an added bone's children are added bones too: Anus_00_SMP > Anus_01_Offset >
 				// Anus_01); the ones in a skin are placed themselves after this, parents first.
 				std::function<void(RE::NiNode*)> follow = [&](RE::NiNode* a_parent) {
@@ -424,10 +440,10 @@ namespace FO4SMP::PlayerPhysics
 				};
 				follow(node);
 				++fixed;
-				logger::info("Player physics: added bone '{}' (parent '{}') moved {:.1f} units to its bind place beside '{}' (shape '{}')",
+				if (Verbose()) logger::info("{}: added bone '{}' (parent '{}') moved {:.1f} units to its bind place beside '{}' (shape '{}')", Label(),
 					node->name.c_str(), node->parent->name.c_str(), moved, best->node->name.c_str(), bestShape->name);
 			}
-			logger::info("Player physics: {} added bone(s) placed from the bind data ({} added bones found in the skins)", fixed, added.size());
+			if (Verbose()) logger::info("{}: {} added bone(s) placed from the bind data ({} added bones found in the skins)", Label(), fixed, added.size());
 
 			// (Restored in run 23: without this, run 22 had 2,600-2,900 rejected poses per 10 s against 8-123.)
 			// The kinematic partners of the simulated bones (Penis_01 for Penis_01_SMP, Penis_Offset for
@@ -460,7 +476,7 @@ namespace FO4SMP::PlayerPhysics
 						child->local = hdt::fo4::LocalFromWorld(partner->world, child->world);
 					}
 				}
-				logger::info("Player physics: kinematic partner '{}' (parent '{}') moved {:.1f} units to '{}'", partner->name.c_str(), partner->parent->name.c_str(), moved, name);
+				if (Verbose()) logger::info("{}: kinematic partner '{}' (parent '{}') moved {:.1f} units to '{}'", Label(), partner->name.c_str(), partner->parent->name.c_str(), moved, name);
 			}
 		}
 
@@ -537,17 +553,17 @@ namespace FO4SMP::PlayerPhysics
 				}
 				return false;
 			};
-			if (g_usingNifPlacement) {
+			if (S().usingNifPlacement) {
 				// Every kinematic added bone follows its NIF parent with its NIF local transform.
-				for (auto* node : g_restOrder) {
+				for (auto* node : S().restOrder) {
 					if (simulated.contains(node)) {
 						continue;
 					}
-					const auto& rest = g_rest.at(node);
-					g_follow.push_back({ node, rest.anchor, rest.relative });
+					const auto& rest = S().rest.at(node);
+					S().follow.push_back({ node, rest.anchor, rest.relative });
 				}
-				logger::info("Player physics: {} kinematic added bone(s) follow their NIF parents each frame", g_follow.size());
-				g_rootBone = rootBone;
+				logger::info("{}: {} kinematic added bone(s) follow their NIF parents each frame", Label(), S().follow.size());
+				S().rootBone = rootBone;
 				return;
 			}
 			std::vector<RE::NiNode*> roots;
@@ -577,15 +593,15 @@ namespace FO4SMP::PlayerPhysics
 				if (!anchor) {
 					continue;
 				}
-				g_follow.push_back({ node, anchor, hdt::fo4::LocalFromWorld(anchor->world, node->world) });
-				logger::info("Player physics: kinematic added bone '{}' (under Root) now follows '{}' ({:.1f} units away)", node->name.c_str(), anchor->name.c_str(), std::sqrt(best));
+				S().follow.push_back({ node, anchor, hdt::fo4::LocalFromWorld(anchor->world, node->world) });
+				if (Verbose()) logger::info("{}: kinematic added bone '{}' (under Root) now follows '{}' ({:.1f} units away)", Label(), node->name.c_str(), anchor->name.c_str(), std::sqrt(best));
 			}
-			g_rootBone = rootBone;
+			S().rootBone = rootBone;
 		}
 
 		void ApplyFollow()
 		{
-			if (!g_rootBone) {
+			if (!S().rootBone) {
 				return;
 			}
 			std::function<void(RE::NiNode*, int)> follow = [&](RE::NiNode* a_parent, int a_depth) {
@@ -599,9 +615,9 @@ namespace FO4SMP::PlayerPhysics
 					}
 				}
 			};
-			for (const auto& f : g_follow) {
+			for (const auto& f : S().follow) {
 				const auto world = hdt::fo4::Compose(f.anchor->world, f.relative);
-				f.node->local = hdt::fo4::LocalFromWorld(f.node->parent ? f.node->parent->world : g_rootBone->world, world);
+				f.node->local = hdt::fo4::LocalFromWorld(f.node->parent ? f.node->parent->world : S().rootBone->world, world);
 				f.node->world = world;
 				follow(f.node, 0);
 			}
@@ -641,11 +657,11 @@ namespace FO4SMP::PlayerPhysics
 							error = "node tree: " + nodeError;
 						}
 					}
-					logger::info("Player physics: NIF {}: {}", path, error.empty() ? std::format("{} skinned shape(s), {} node(s)", info.boneNames.size(), info.nodes.size()) : error);
+					logger::info("{}: NIF {}: {}", Label(), path, error.empty() ? std::format("{} skinned shape(s), {} node(s)", info.boneNames.size(), info.nodes.size()) : error);
 					it = g_nifCache.emplace(path, std::move(info)).first;
 				}
 				if (!it->second.boneNames.empty() && std::ranges::all_of(a_shapes, [&](const std::string& s) { return it->second.boneNames.contains(s); })) {
-					logger::info("Player physics: using {} for bone names and the added bones' places", path);
+					logger::info("{}: using {} for bone names and the added bones' places", Label(), path);
 					return &it->second;
 				}
 			}
@@ -688,7 +704,7 @@ namespace FO4SMP::PlayerPhysics
 				const auto& nif = a_nif.nodes.at(node->name.c_str());
 				auto* parent = nif.parent.empty() ? nullptr : hdt::fo4::findNode(a_skeleton, RE::BSFixedString(nif.parent.c_str()));
 				if (!parent || !node->parent || parent == node) {
-					logger::info("Player physics: added bone '{}': NIF parent '{}' isn't in the skeleton; left as it is", node->name.c_str(), nif.parent);
+					if (Verbose()) logger::info("{}: added bone '{}': NIF parent '{}' isn't in the skeleton; left as it is", Label(), node->name.c_str(), nif.parent);
 					continue;
 				}
 				const auto world = hdt::fo4::Compose(parent->world, nif.local);
@@ -707,12 +723,12 @@ namespace FO4SMP::PlayerPhysics
 					}
 				};
 				follow(node, 0);
-				g_rest[node] = { parent, nif.local };
-				g_restOrder.push_back(node);
+				S().rest[node] = { parent, nif.local };
+				S().restOrder.push_back(node);
 				++placed;
-				logger::info("Player physics: added bone '{}' placed under '{}' as in the NIF (moved {:.1f} units)", node->name.c_str(), nif.parent, std::sqrt(dx * dx + dy * dy + dz * dz));
+				if (Verbose()) logger::info("{}: added bone '{}' placed under '{}' as in the NIF (moved {:.1f} units)", Label(), node->name.c_str(), nif.parent, std::sqrt(dx * dx + dy * dy + dz * dz));
 			}
-			logger::info("Player physics: {} added bone(s) placed from the NIF", placed);
+			logger::info("{}: {} added bone(s) placed from the NIF", Label(), placed);
 		}
 
 		struct Candidate
@@ -754,7 +770,7 @@ namespace FO4SMP::PlayerPhysics
 		std::vector<Candidate> AttachCandidates(RE::NiAVObject* a_root)
 		{
 			std::map<std::string, std::pair<Candidate, std::size_t>> best;
-			for (const auto& a : AttachHook::PhysicsAttachesOf(0x14)) {
+			for (const auto& a : AttachHook::PhysicsAttachesOf(S().formID)) {
 				if (!IsAttachedUnder(a.attached.get(), a_root)) {
 					continue;
 				}
@@ -790,14 +806,14 @@ namespace FO4SMP::PlayerPhysics
 				hdt::fo4::SkinnedShape skinned;
 				const auto error = hdt::fo4::ReadSkinnedShape(shape, skinned, false);
 				if (error.empty() && skinned.unresolved) {
-					g_unresolvedShapes.push_back({ shape, skinned.unresolved });
+					S().unresolvedShapes.push_back({ shape, skinned.unresolved });
 				}
 				if (a_log) {
 					if (error.empty()) {
-						logger::info("Player physics:   shape '{}' ({}): {} bones, {} vertices, {} precision", shape->name.c_str(), hdt::fo4::ClassName(shape),
+						if (Verbose()) logger::info("{}:   shape '{}' ({}): {} bones, {} vertices, {} precision", Label(), shape->name.c_str(), hdt::fo4::ClassName(shape),
 							skinned.bones.size(), skinned.vertices.size(), skinned.fullPrecision ? "full" : "half");
 					} else {
-						logger::info("Player physics:   shape '{}' ({}): {}", shape->name.c_str(), hdt::fo4::ClassName(shape), error);
+						logger::info("{}:   shape '{}' ({}): {}", Label(), shape->name.c_str(), hdt::fo4::ClassName(shape), error);
 					}
 				}
 				if (auto it = a_defaults.files.find(shape->name.c_str()); it != a_defaults.files.end() && shape->parent) {
@@ -822,17 +838,17 @@ namespace FO4SMP::PlayerPhysics
 		{
 			auto* skeleton = hdt::castNiNode(a_root);
 			if (!skeleton) {
-				logger::warn("Player physics: the player's 3D root is a {}, not a node", hdt::fo4::ClassName(a_root));
+				logger::warn("{}: the player's 3D root is a {}, not a node", Label(), hdt::fo4::ClassName(a_root));
 				return;
 			}
 
-			const bool log = !g_reportedEmpty;
+			const bool log = !S().reportedEmpty;
 			if (log) {
-				logger::info("Player physics: scanning the player's 3D '{}' ({})", a_root->name.c_str(), hdt::fo4::ClassName(a_root));
+				logger::info("{}: scanning the player's 3D '{}' ({})", Label(), a_root->name.c_str(), hdt::fo4::ClassName(a_root));
 			}
 			std::vector<Candidate> candidates;
-			g_unresolvedShapes.clear();
-			g_waiting = false;
+			S().unresolvedShapes.clear();
+			S().waiting = false;
 			Walk(a_root, a_root, a_defaults, candidates, log, 0);
 			// Milestone 4: what the attach hook saw wins over the scan (extra data is gone after the attach, and
 			// defaultBBPs.xml was a stand-in); the scan stays as the fallback.
@@ -841,31 +857,31 @@ namespace FO4SMP::PlayerPhysics
 			}
 			// Only the shapes the physics will be built from count (the head's or a weapon's don't).
 			std::uint32_t g_unresolved = 0;
-			for (const auto& [shape, count] : g_unresolvedShapes) {
+			for (const auto& [shape, count] : S().unresolvedShapes) {
 				if (std::ranges::any_of(candidates, [&](const Candidate& c) { return IsAttachedUnder(shape, c.model); })) {
 					g_unresolved += count;
 				}
 			}
 
-			const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_rootSince).count();
+			const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - S().rootSince).count();
 			if (!candidates.empty() && g_unresolved > 0) {
 				if (false && waited < kBoneWaitSeconds) {  // the NIF's bone names fill them now (kept for reference)
-					logger::info("Player physics: {} skin bone(s) of the player's shapes aren't set yet ({:.0f} s after the 3D loaded); waiting", g_unresolved, waited);
-					g_waiting = true;
-					g_reportedEmpty = true;  // don't list the shapes again
+					logger::info("{}: {} skin bone(s) of the player's shapes aren't set yet ({:.0f} s after the 3D loaded); waiting", Label(), g_unresolved, waited);
+					S().waiting = true;
+					S().reportedEmpty = true;  // don't list the shapes again
 					return;
 				}
-				logger::info("Player physics: {} skin bone(s) of the physics' shapes are unset ({:.0f} s after the 3D loaded); filling them from the NIF", g_unresolved, waited);
+				logger::info("{}: {} skin bone(s) of the physics' shapes are unset ({:.0f} s after the 3D loaded); filling them from the NIF", Label(), g_unresolved, waited);
 			} else if (!candidates.empty()) {
-				logger::info("Player physics: all skin bones set ({:.0f} s after the 3D loaded)", waited);
+				logger::info("{}: all skin bones set ({:.0f} s after the 3D loaded)", Label(), waited);
 			}
 
 			if (candidates.empty()) {
 				if (log) {
-					logger::info("Player physics: no physics found on the player (no '{}' extra data, no shape named in defaultBBPs.xml); looking again every {} s",
+					logger::info("{}: no physics found on the player (no '{}' extra data, no shape named in defaultBBPs.xml); looking again every {} s", Label(),
 						kPhysicsExtraData, kRescanSeconds);
 				}
-				g_reportedEmpty = true;
+				S().reportedEmpty = true;
 				return;
 			}
 
@@ -875,21 +891,21 @@ namespace FO4SMP::PlayerPhysics
 			std::set<std::pair<RE::NiAVObject*, std::string>> seen;
 			for (const auto& c : candidates) {
 				if (haveExtraData && !c.source.starts_with("extra data")) {
-					logger::info("Player physics: ignoring {} ({}): extra data names the physics", c.file, c.source);
+					logger::info("{}: ignoring {} ({}): extra data names the physics", Label(), c.file, c.source);
 					continue;
 				}
 				if (!seen.insert({ c.model, c.file }).second) {
 					continue;
 				}
-				logger::info("Player physics: building {} from {} (model node '{}')", c.file, c.source, c.model->name.c_str());
+				logger::info("{}: building {} from {} (model node '{}')", Label(), c.file, c.source, c.model->name.c_str());
 				// The outfit's NIF: skin bone names for the null entries, and the added bones' places.
 				const std::vector<std::string> nifShapes = SkinnedShapeNames(c.model);
 				const NifInfo* nif = FindNif(c.file, nifShapes, c.nif);
-				g_usingNifPlacement = nif && !nif->nodes.empty();
-				if (g_usingNifPlacement) {
+				S().usingNifPlacement = nif && !nif->nodes.empty();
+				if (S().usingNifPlacement) {
 					PlaceAddedBonesFromNif(skeleton, *nif);
 				} else {
-					logger::warn("Player physics: no NIF found for {} with all {} skinned shape(s); placing added bones from the bind data and leaving null skin bones unset", c.file, nifShapes.size());
+					logger::warn("{}: no NIF found for {} with all {} skinned shape(s); placing added bones from the bind data and leaving null skin bones unset", Label(), c.file, nifShapes.size());
 					FixAddedBones(skeleton, c.model);
 				}
 
@@ -900,7 +916,7 @@ namespace FO4SMP::PlayerPhysics
 				auto system = creator.createOrUpdateSystem(skeleton, c.model, &file, {}, nullptr);
 				const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 				if (!system) {
-					logger::warn("Player physics: {} built nothing (file missing or unreadable, or no bones found; see the lines above)", c.file);
+					logger::warn("{}: {} built nothing (file missing or unreadable, or no bones found; see the lines above)", Label(), c.file);
 					continue;
 				}
 
@@ -908,72 +924,61 @@ namespace FO4SMP::PlayerPhysics
 				for (auto& bone : system->getBones()) {
 					dynamic += bone->m_rig.isStaticOrKinematicObject() ? 0 : 1;
 				}
-				logger::info("Player physics: {} built in {:.1f} ms: {} bones ({} simulated), {} collision bodies",
+				logger::info("{}: {} built in {:.1f} ms: {} bones ({} simulated), {} collision bodies", Label(),
 					c.file, ms, system->getBones().size(), dynamic, system->meshes().size());
-				Console::Print(std::format("FO4SMP: physics on the player from {} ({} bones simulated)", c.file, dynamic));
+				if (Verbose()) {
+					Console::Print(std::format("FO4SMP: physics on the player from {} ({} bones simulated)", c.file, dynamic));
+				}
 
 				LogCollisionFilter(system.get());
 				BuildFollow(skeleton, system.get());
 				PhysicsWorld::Get()->AddSystem(system.get());
-				g_built.push_back({ system, RE::NiPointer<RE::NiAVObject>(c.model), c.file });
+				S().built.push_back({ system, RE::NiPointer<RE::NiAVObject>(c.model), c.file });
 			}
 		}
 	}
 
-	void Update(const hdt::DefaultBBPList& a_defaults)
+	namespace
 	{
-		const auto now = std::chrono::steady_clock::now();
-		auto* root = PlayerRoot();
+		int g_maxActive = 5;                       // smp.maximumActiveSkeletons: the player and up to this many minus one NPCs
+		constexpr float kNpcMaxDistance = 2000.0f;  // game units (about 28 m); NPCs farther away aren't simulated
+		constexpr double kSelectSeconds = 1.0;      // how often the simulated NPCs are chosen again
 
-		// Milestone 4: a new third-person attach on the player that names physics (outfit change, 3D reload)
-		// rebuilds the player's physics once the attach settles.
-		static std::uint32_t s_generation = AttachHook::PlayerPhysicsGeneration();
-		if (const auto generation = AttachHook::PlayerPhysicsGeneration(); generation != s_generation) {
-			s_generation = generation;
-			if (root == g_root) {
-				Drop("a physics outfit attached to the player");
-				g_reportedEmpty = false;
-				g_nextCheck = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(kScanDelaySeconds));
-			}
+		RE::NiAVObject* RootOf(const ActorState& a_state)
+		{
+			return a_state.isPlayer ? PlayerRoot() : AttachHook::Loaded3D(a_state.handle);
 		}
 
-		if (root != g_root) {
-			Drop("the player's 3D changed");
-			g_root = root;
-			g_rootSince = now;
-			g_reportedEmpty = false;
-			g_nextCheck = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(kScanDelaySeconds));
-			return;
-		}
-		if (root && !g_built.empty()) {
-			ApplyFollow();  // every frame, before the physics reads the skeleton
-			// A rejected (exploded) pose leaves its neighbours strained; resetting one bone onto its last
-			// written pose kept the chain wild (run 22: ~2,900 rejections per 10 s). Put every simulated bone
-			// back on its rest pose beside its anchor, at rest, and let it settle again.
-			if (hdt::Fo4Bone::TakeExplosion()) {
-				++g_systemResets;
+		// After an explosion: every simulated bone of every actor back on its rest pose, at rest.
+		void ResetAfterExplosion()
+		{
+			++g_systemResets;
+			for (auto& [id, state] : g_actors) {
+				g_current = &state;
 				// Bullet disables ("breaks") a constraint whose impulse reaches its breaking threshold (infinite by
-				// default); an exploded step gives infinite impulses, so the joints stay off for good and the bones
-				// fall freely (run 25: after one big explosion, the penis fell straight down and was reset about once
-				// a second). Turn every constraint between a simulated bone and anything back on.
+				// default); an exploded step gives infinite impulses, so the joints would stay off for good and the
+				// bones fall freely (run 25). Turn every constraint between a simulated bone and anything back on.
 				int reenabled = 0;
-				for (const auto& b : g_built) {
+				for (const auto& b : S().built) {
 					reenabled += b.system->ReenableConstraints();
 				}
 				if (reenabled) {
 					static int s_logged = 0;
 					if (s_logged < 20) {
 						++s_logged;
-						logger::warn("Player physics: {} constraint(s) had been disabled (broken) by the explosion; turned back on", reenabled);
+						logger::warn("{}: {} constraint(s) had been disabled (broken) by the explosion; turned back on", Label(), reenabled);
 					}
 				}
-				for (const auto& b : g_built) {
+				// A rejected (exploded) pose leaves its neighbours strained; resetting one bone onto its last
+				// written pose kept the chain wild (run 22). Put every simulated bone back on its rest pose beside
+				// its anchor, at rest, and let it settle again.
+				for (const auto& b : S().built) {
 					for (auto& bone : b.system->getBones()) {
 						auto* fb = static_cast<hdt::Fo4Bone*>(bone.get());
 						if (fb->m_rig.isStaticOrKinematicObject()) {
 							continue;
 						}
-						if (const auto it = g_rest.find(fb->m_node.get()); it != g_rest.end() && fb->m_node->parent) {
+						if (const auto it = S().rest.find(fb->m_node.get()); it != S().rest.end() && fb->m_node->parent) {
 							const auto world = hdt::fo4::Compose(it->second.anchor->world, it->second.relative);
 							fb->m_node->local = hdt::fo4::LocalFromWorld(fb->m_node->parent->world, world);
 							fb->m_node->world = world;
@@ -983,35 +988,163 @@ namespace FO4SMP::PlayerPhysics
 				}
 			}
 		}
-		if (!root || now < g_nextCheck) {
-			return;
+
+		std::chrono::steady_clock::duration Seconds(double a_seconds)
+		{
+			return std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(a_seconds));
 		}
 
-		if (g_built.empty()) {
-			Scan(root, a_defaults);
-			g_nextCheck = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(g_waiting ? 1.0 : (g_built.empty() ? kRescanSeconds : kAttachCheckSeconds)));
-			return;
-		}
-
-		static int dumps = 0;
-		static auto nextDump = now;
-		if (dumps < 12 && now >= nextDump) {
-			for (const auto& b : g_built) {
-				DumpGeometry(b);
+		// One actor's frame: rebuild on a new physics attach or a new 3D, keep the kinematic added bones on their
+		// NIF parents, build when due, drop what's no longer attached. g_current is a_state.
+		void UpdateActor(ActorState& a_state, RE::NiAVObject* a_root, std::uint32_t a_generation, const hdt::DefaultBBPList& a_defaults, std::chrono::steady_clock::time_point a_now)
+		{
+			g_current = &a_state;
+			// Milestone 4: a new third-person attach that names physics (outfit change, 3D reload) rebuilds once
+			// the attach settles.
+			if (a_generation != S().generation) {
+				S().generation = a_generation;
+				if (a_root == S().root) {
+					Drop("a physics outfit attached");
+					S().reportedEmpty = false;
+					S().nextCheck = a_now + Seconds(kScanDelaySeconds);
+				}
 			}
-			++dumps;
-			nextDump = now + std::chrono::seconds(dumps < 2 ? 2 : 10);
-		}
-
-		for (const auto& b : g_built) {
-			if (!IsAttachedUnder(b.model.get(), root)) {
-				Drop(std::format("'{}' is no longer attached", b.model->name.c_str()));
-				g_reportedEmpty = false;
-				g_nextCheck = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(kScanDelaySeconds));
+			if (a_root != S().root) {
+				Drop(S().isPlayer ? "the player's 3D changed" : "the NPC's 3D changed");
+				S().root = a_root;
+				S().rootSince = a_now;
+				S().reportedEmpty = false;
+				S().nextCheck = a_now + Seconds(kScanDelaySeconds);
 				return;
 			}
+			if (a_root && !S().built.empty()) {
+				ApplyFollow();  // every frame, before the physics reads the skeleton
+			}
+			if (!a_root || a_now < S().nextCheck) {
+				return;
+			}
+
+			if (S().built.empty()) {
+				// NPCs: only what the attach hook saw (the scan's defaultBBPs.xml fallback is for the player).
+				static const hdt::DefaultBBPList kNone{};
+				Scan(a_root, S().isPlayer ? a_defaults : kNone);
+				S().nextCheck = a_now + Seconds(S().waiting ? 1.0 : (S().built.empty() ? kRescanSeconds : kAttachCheckSeconds));
+				return;
+			}
+
+			if (S().isPlayer) {
+				static int dumps = 0;
+				static auto nextDump = a_now;
+				if (dumps < 12 && a_now >= nextDump) {
+					for (const auto& b : S().built) {
+						DumpGeometry(b);
+					}
+					++dumps;
+					nextDump = a_now + std::chrono::seconds(dumps < 2 ? 2 : 10);
+				}
+			}
+
+			for (const auto& b : S().built) {
+				if (!IsAttachedUnder(b.model.get(), a_root)) {
+					Drop(std::format("'{}' is no longer attached", b.model->name.c_str()));
+					S().reportedEmpty = false;
+					S().nextCheck = a_now + Seconds(kScanDelaySeconds);
+					return;
+				}
+			}
+			S().nextCheck = a_now + Seconds(kAttachCheckSeconds);
 		}
-		g_nextCheck = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(kAttachCheckSeconds));
+
+		// Milestone 4: which NPCs are simulated: those the attach hook saw with physics, with 3D loaded, within
+		// kNpcMaxDistance of the player, nearest first, up to g_maxActive - 1. The rest are dropped.
+		void SelectNpcs(RE::NiAVObject* a_playerRoot, const std::vector<AttachHook::PhysicsActor>& a_actors)
+		{
+			std::vector<std::pair<float, const AttachHook::PhysicsActor*>> nearby;
+			if (a_playerRoot && g_maxActive > 1) {
+				const auto& p = a_playerRoot->world.translate;
+				for (const auto& a : a_actors) {
+					if (a.formID == 0x14) {
+						continue;
+					}
+					auto* root = AttachHook::Loaded3D(a.handle);
+					if (!root) {
+						continue;
+					}
+					const auto& q = root->world.translate;
+					const float d = std::sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) + (p.z - q.z) * (p.z - q.z));
+					if (d <= kNpcMaxDistance) {
+						nearby.push_back({ d, &a });
+					}
+				}
+				std::ranges::sort(nearby, {}, &decltype(nearby)::value_type::first);
+				if (nearby.size() > static_cast<std::size_t>(g_maxActive - 1)) {
+					nearby.resize(g_maxActive - 1);
+				}
+			}
+
+			std::set<std::uint32_t> chosen;
+			for (const auto& [d, a] : nearby) {
+				chosen.insert(a->formID);
+				if (!g_actors.contains(a->formID)) {
+					auto& state = g_actors[a->formID];
+					state.formID = a->formID;
+					state.handle = a->handle;
+					state.generation = a->generation;
+					logger::info("NPC {:08X} physics: selected ({:.0f} units from the player)", a->formID, d);
+				}
+			}
+			for (auto it = g_actors.begin(); it != g_actors.end();) {
+				if (!it->second.isPlayer && !chosen.contains(it->first)) {
+					g_current = &it->second;
+					Drop("no longer among the nearest NPCs, too far, or unloaded");
+					logger::info("NPC {:08X} physics: deselected", it->first);
+					it = g_actors.erase(it);
+				} else {
+					++it;
+				}
+			}
+		}
+	}
+
+	void SetMaxActive(int a_maxActive)
+	{
+		g_maxActive = std::max(1, a_maxActive);
+		logger::info("Actor physics: the player and up to {} NPC(s) within {:.0f} units are simulated", g_maxActive - 1, kNpcMaxDistance);
+	}
+
+	void Update(const hdt::DefaultBBPList& a_defaults)
+	{
+		const auto now = std::chrono::steady_clock::now();
+
+		auto& player = g_actors[0x14];
+		player.formID = 0x14;
+		player.isPlayer = true;
+
+		const auto actors = AttachHook::PhysicsActors();
+		auto generationOf = [&](std::uint32_t a_formID) {
+			for (const auto& a : actors) {
+				if (a.formID == a_formID) {
+					return a.generation;
+				}
+			}
+			return 0u;
+		};
+
+		auto* playerRoot = PlayerRoot();
+		static auto nextSelect = now;
+		if (now >= nextSelect) {
+			SelectNpcs(playerRoot, actors);
+			nextSelect = now + Seconds(kSelectSeconds);
+		}
+
+		if (hdt::Fo4Bone::TakeExplosion()) {
+			ResetAfterExplosion();
+		}
+
+		for (auto& [id, state] : g_actors) {
+			UpdateActor(state, state.isPlayer ? playerRoot : RootOf(state), generationOf(id), a_defaults, now);
+		}
+		g_current = &g_actors[0x14];
 	}
 
 	std::uint32_t TakeSystemResets()
@@ -1023,16 +1156,23 @@ namespace FO4SMP::PlayerPhysics
 
 	std::string Status()
 	{
-		if (g_built.empty()) {
-			return "no physics on the player yet";
-		}
-		std::size_t bones = 0, dynamic = 0;
-		for (const auto& b : g_built) {
-			for (auto& bone : b.system->getBones()) {
-				++bones;
-				dynamic += bone->m_rig.isStaticOrKinematicObject() ? 0 : 1;
+		std::string out;
+		int npcs = 0;
+		for (const auto& [id, state] : g_actors) {
+			std::size_t bones = 0, dynamic = 0;
+			for (const auto& b : state.built) {
+				for (auto& bone : b.system->getBones()) {
+					++bones;
+					dynamic += bone->m_rig.isStaticOrKinematicObject() ? 0 : 1;
+				}
+			}
+			if (state.isPlayer) {
+				out = state.built.empty() ? std::string{ "no physics on the player yet" } :
+				                            std::format("player physics: {} system(s), {} bones ({} simulated)", state.built.size(), bones, dynamic);
+			} else if (!state.built.empty()) {
+				++npcs;
 			}
 		}
-		return std::format("player physics: {} system(s), {} bones ({} simulated)", g_built.size(), bones, dynamic);
+		return std::format("{}; {} NPC(s) simulated", out.empty() ? "no physics on the player yet" : out, npcs);
 	}
 }
