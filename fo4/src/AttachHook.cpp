@@ -133,7 +133,7 @@ namespace FO4SMP::AttachHook
 		bool CheckSite(std::uintptr_t a_site, const char* a_label)
 		{
 			const auto* code = reinterpret_cast<const std::uint8_t*>(a_site);
-			const auto base = REL::Module::get().base();
+			const auto base = REX::FModule::GetExecutingModule().GetBaseAddress();
 			if (code[0] != 0xE8) {
 				logger::error("Attach hook: {} (+{:07X}) isn't a call (starts {:02X}); not installed", a_label, a_site - base, code[0]);
 				return false;
@@ -156,12 +156,11 @@ namespace FO4SMP::AttachHook
 		if (!CheckSite(site1.address(), "ApplySkinnedObjects' first attach call") || !CheckSite(site2.address(), "ApplySkinnedObjects' second attach call")) {
 			return false;
 		}
-		F4SE::AllocTrampoline(2 * 14);
-		auto& trampoline = F4SE::GetTrampoline();
+		auto& trampoline = REL::GetTrampoline();  // allocated by F4SE::Init (main.cpp)
 		g_original1 = reinterpret_cast<Attach_t*>(trampoline.write_call<5>(site1.address(), &Hook1));
 		g_original2 = reinterpret_cast<Attach_t*>(trampoline.write_call<5>(site2.address(), &Hook2));
 		g_installed = true;
-		const auto base = REL::Module::get().base();
+		const auto base = REX::FModule::GetExecutingModule().GetBaseAddress();
 		logger::info("Attach hook: installed at ApplySkinnedObjects' two calls to AttachSkinnedObject (+{:07X}, +{:07X})", site1.address() - base, site2.address() - base);
 		return true;
 	}

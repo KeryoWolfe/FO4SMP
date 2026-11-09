@@ -21,11 +21,13 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 
 set(FSMP_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../src")
 
-# CommonLibF4: next-gen / 1.11 runtimes only (the first target is 1.11.240).
-set(ENABLE_FALLOUT_F4 OFF CACHE BOOL "" FORCE)
-set(ENABLE_FALLOUT_NG ON CACHE BOOL "" FORCE)
-set(ENABLE_FALLOUT_VR OFF CACHE BOOL "" FORCE)
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../extern/CommonLibF4/CommonLibF4" CommonLibF4 EXCLUDE_FROM_ALL)
+# CommonLibF4: KeryoWolfe/CommonLibF4, branch fo4smp/combined (Dear Modding's tree plus every other fork's fixes, with
+# REL::VariantID{ og, ng, ae } and every AE id in Address Library 1.11.240; see its FO4SMP.md). Its own CMakeLists
+# builds lib/commonlib-shared too: `git submodule update --init --recursive`.
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../extern/CommonLibF4/lib/commonlib-shared/CMakeLists.txt")
+	message(FATAL_ERROR "extern/CommonLibF4's submodules are missing: run git submodule update --init --recursive")
+endif()
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../extern/CommonLibF4" CommonLibF4 EXCLUDE_FROM_ALL)
 
 find_package(spdlog CONFIG REQUIRED)
 find_package(Bullet CONFIG REQUIRED)  # FSMP's patched Bullet 3.25 (../cmake/ports/bullet3)

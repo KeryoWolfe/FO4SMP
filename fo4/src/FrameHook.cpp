@@ -134,7 +134,7 @@ namespace FO4SMP::FrameHook
 		const auto* code = reinterpret_cast<const std::uint8_t*>(site.address());
 		if (code[0] != 0xE8) {
 			logger::error("Frame hook: the main loop's call to Main::OnIdle (+{:07X}) isn't a call (starts {:02X}); not installed",
-				site.address() - REL::Module::get().base(), code[0]);
+				site.address() - REX::FModule::GetExecutingModule().GetBaseAddress(), code[0]);
 			return false;
 		}
 
@@ -144,13 +144,12 @@ namespace FO4SMP::FrameHook
 		const auto onIdle = Offsets::MainOnIdle.address();
 		if (current != onIdle) {
 			logger::warn("Frame hook: the main loop's call already points at +{:X}, not Main::OnIdle: another plugin hooked it first; FO4SMP calls it in turn",
-				current - REL::Module::get().base());
+				current - REX::FModule::GetExecutingModule().GetBaseAddress());
 		}
 
-		F4SE::AllocTrampoline(14);
-		g_onIdle = reinterpret_cast<OnIdle_t*>(F4SE::GetTrampoline().write_call<5>(site.address(), &OnIdle_Hook));
+		g_onIdle = reinterpret_cast<OnIdle_t*>(REL::GetTrampoline().write_call<5>(site.address(), &OnIdle_Hook));  // trampoline: F4SE::Init
 		g_installed = true;
-		logger::info("Frame hook: installed at the main loop's call to Main::OnIdle (+{:07X})", site.address() - REL::Module::get().base());
+		logger::info("Frame hook: installed at the main loop's call to Main::OnIdle (+{:07X})", site.address() - REX::FModule::GetExecutingModule().GetBaseAddress());
 		return true;
 	}
 

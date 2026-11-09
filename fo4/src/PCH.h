@@ -41,7 +41,34 @@
 
 using namespace std::literals;
 
-namespace logger = F4SE::log;
+// Logging: spdlog's default logger (set up in main.cpp), with std::format strings, as F4SE::log did in the
+// CommonLibF4 FO4SMP used before (alandtse's); the combined CommonLibF4's own REX::INFO etc. log to the same logger.
+namespace logger
+{
+	namespace detail
+	{
+		template <class... Args>
+		void Log(spdlog::level::level_enum a_level, std::format_string<Args...> a_fmt, Args&&... a_args)
+		{
+			if (auto* log = spdlog::default_logger_raw(); log && log->should_log(a_level)) {
+				log->log(a_level, std::string_view{ std::format(a_fmt, std::forward<Args>(a_args)...) });
+			}
+		}
+	}
+
+	template <class... Args>
+	void trace(std::format_string<Args...> a_fmt, Args&&... a_args) { detail::Log(spdlog::level::trace, a_fmt, std::forward<Args>(a_args)...); }
+	template <class... Args>
+	void debug(std::format_string<Args...> a_fmt, Args&&... a_args) { detail::Log(spdlog::level::debug, a_fmt, std::forward<Args>(a_args)...); }
+	template <class... Args>
+	void info(std::format_string<Args...> a_fmt, Args&&... a_args) { detail::Log(spdlog::level::info, a_fmt, std::forward<Args>(a_args)...); }
+	template <class... Args>
+	void warn(std::format_string<Args...> a_fmt, Args&&... a_args) { detail::Log(spdlog::level::warn, a_fmt, std::forward<Args>(a_args)...); }
+	template <class... Args>
+	void error(std::format_string<Args...> a_fmt, Args&&... a_args) { detail::Log(spdlog::level::err, a_fmt, std::forward<Args>(a_args)...); }
+	template <class... Args>
+	void critical(std::format_string<Args...> a_fmt, Args&&... a_args) { detail::Log(spdlog::level::critical, a_fmt, std::forward<Args>(a_args)...); }
+}
 
 // <Windows.h> types and macros the core uses (CommonLibF4 doesn't include <Windows.h>).
 using UINT = unsigned int;

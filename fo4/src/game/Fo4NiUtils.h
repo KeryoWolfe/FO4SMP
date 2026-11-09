@@ -112,7 +112,7 @@ namespace hdt::fo4
 
 	inline RE::NiTObjectArray<RE::NiPointer<RE::NiAVObject>>& Children(RE::NiNode* a_node) noexcept
 	{
-		return a_node->GetRuntimeData().children;
+		return a_node->children;
 	}
 
 	// Depth-first search by name (BSFixedString compares pooled pointers, case-insensitively).
@@ -145,9 +145,10 @@ namespace hdt::fo4
 		if (!a_object || !a_object->extra) {
 			return {};
 		}
-		for (auto* data : *a_object->extra) {
+		for (const auto& entry : a_object->extra->extra) {
+			auto* data = entry.get();
 			if (data && IsKindOf(data, ".?AVNiStringExtraData@@"sv) && std::string_view{ data->name.c_str() } == a_key) {
-				return static_cast<RE::NiStringExtraData*>(data)->data.c_str();
+				return static_cast<RE::NiStringExtraData*>(data)->GetValue().c_str();
 			}
 		}
 		return {};

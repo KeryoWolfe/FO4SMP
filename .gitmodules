@@ -7,4 +7,5 @@
 	url = https://github.com/ousnius/nifly.git
 [submodule "extern/CommonLibF4"]
 	path = extern/CommonLibF4
-	url = https://github.com/alandtse/CommonLibF4.git
+	url = https://github.com/KeryoWolfe/CommonLibF4.git
+	branch = fo4smp/combined

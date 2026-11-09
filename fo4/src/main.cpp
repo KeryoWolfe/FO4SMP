@@ -7,6 +7,8 @@
 // physics world every frame and logs its timing. Nothing is attached to actors yet.
 
 #include "AddressCheck.h"
+#include "REX/W32/OLE32.h"
+#include "REX/W32/SHELL32.h"
 #include "game/Fo4NiUtils.h"
 #include "AttachHook.h"
 #include "Config.h"
@@ -30,11 +32,15 @@ namespace
 
 	void InitLog()
 	{
-		auto path = logger::log_directory();
-		if (!path) {
+		// My Games\Fallout4\F4SE\FO4SMP.log (as F4SE's own logs; the folder name comes from F4SE).
+		wchar_t* documents = nullptr;
+		const auto result = REX::W32::SHGetKnownFolderPath(REX::W32::FOLDERID_Documents, REX::W32::KF_FLAG_DEFAULT, nullptr, &documents);
+		std::unique_ptr<wchar_t[], decltype(&REX::W32::CoTaskMemFree)> owner(documents, REX::W32::CoTaskMemFree);
+		if (result != 0 || !documents) {
 			return;
 		}
-		*path /= std::format("{}.log", Version::PROJECT);
+		auto path = std::optional<std::filesystem::path>{ std::filesystem::path{ documents } };
+		*path /= std::format("My Games/{}/F4SE/{}.log", F4SE::GetSaveFolderName(), Version::PROJECT);
 
 		auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path->string(), true);
 		auto log = std::make_shared<spdlog::logger>("global", std::move(sink));
@@ -147,10 +153,11 @@ F4SE_EXPORT constinit auto F4SEPlugin_Version = []() noexcept {
 
 F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 {
-	F4SE::Init(a_f4se, false);
+	// Logging is FO4SMP's own (InitLog); one trampoline for both hooks (frame: 1 call, attach: 2 calls).
+	F4SE::Init(a_f4se, { .log = false, .trampoline = true, .trampolineSize = 64 });
 	InitLog();
 
-	const auto runtime = REL::Module::get().version();
+	const auto runtime = REX::FModule::GetExecutingModule().GetFileVersion();
 	logger::info("{} {} loading on Fallout 4 {}", Version::PROJECT, Version::NAME, runtime.string("."sv));
 
 	if (runtime != REL::Version(1, 11, 240, 0)) {

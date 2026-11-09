@@ -13,18 +13,38 @@ namespace FO4SMP::AddressCheck
 			kFailed
 		};
 
-		// Resolves an Address Library ID without throwing; 0 when the ID is missing
-		// from the database for this runtime.
-		std::uintptr_t Resolve(const REL::ID& a_id) noexcept
+		std::uintptr_t Base() noexcept { return REX::FModule::GetExecutingModule().GetBaseAddress(); }
+
+		// The Address Library database for 1.11.240 (Data\F4SE\Plugins\version-1-11-240-0.bin: a count, then
+		// id/offset pairs sorted by id), read here so a missing id can be reported: CommonLibF4's own lookup
+		// (commonlib-shared) stops the game on a missing id, by design.
+		const std::vector<std::pair<std::uint64_t, std::uint64_t>>& Database()
 		{
-			try {
-				return a_id.address();
-			} catch (...) {
-				return 0;
-			}
+			static const auto table = [] {
+				std::vector<std::pair<std::uint64_t, std::uint64_t>> out;
+				std::ifstream file("Data/F4SE/Plugins/version-1-11-240-0.bin", std::ios::binary);
+				std::uint64_t count = 0;
+				if (file.read(reinterpret_cast<char*>(&count), sizeof(count)) && count < 10'000'000) {
+					out.resize(static_cast<std::size_t>(count));
+					if (!file.read(reinterpret_cast<char*>(out.data()), static_cast<std::streamsize>(count * 16))) {
+						out.clear();
+					}
+				}
+				if (out.empty()) {
+					logger::error("Address check: couldn't read Data\\F4SE\\Plugins\\version-1-11-240-0.bin (Address Library)");
+				}
+				return out;
+			}();
+			return table;
 		}
 
-		std::uintptr_t Base() noexcept { return REL::Module::get().base(); }
+		// Resolves an Address Library ID; 0 when the ID is missing from the database for this runtime.
+		std::uintptr_t Resolve(const REL::ID& a_id) noexcept
+		{
+			const auto& db = Database();
+			const auto it = std::lower_bound(db.begin(), db.end(), a_id.id(), [](const auto& a_entry, std::uint64_t a_value) { return a_entry.first < a_value; });
+			return it != db.end() && it->first == a_id.id() ? Base() + static_cast<std::uintptr_t>(it->second) : 0;
+		}
 
 		// The file name of the module that owns a_address ("" if none).
 		std::string ModuleOf(std::uintptr_t a_address)

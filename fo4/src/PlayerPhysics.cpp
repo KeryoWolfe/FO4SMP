@@ -1743,13 +1743,14 @@ namespace FO4SMP::PlayerPhysics
 			auto extras = [](RE::NiAVObject* a_o) {
 				std::string out;
 				if (a_o->extra) {
-					for (auto* data : *a_o->extra) {
+					for (const auto& entry : a_o->extra->extra) {
+						auto* data = entry.get();
 						if (!data) {
 							continue;
 						}
 						out += std::format(" [{} {}", hdt::fo4::ClassName(data), data->name.c_str());
 						if (hdt::fo4::IsKindOf(data, ".?AVNiStringExtraData@@"sv)) {
-							out += std::format(" = '{}'", static_cast<RE::NiStringExtraData*>(data)->data.c_str());
+							out += std::format(" = '{}'", static_cast<RE::NiStringExtraData*>(data)->GetValue().c_str());
 						}
 						out += "]";
 					}
