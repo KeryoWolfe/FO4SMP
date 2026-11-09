@@ -224,6 +224,11 @@ namespace FO4SMP::PlayerPhysics
 			std::vector<RE::NiPointer<RE::NiNode>> nodes;  // parents first
 			std::unordered_map<std::string, RE::NiNode*> byName;
 			std::unordered_set<RE::NiNode*> simulated;
+			// Each node's local transform from the head part NIF: the pose physics starts from. Physics writes the
+			// simulated nodes' local transforms; when their systems are dropped, the nodes go back to this, or each
+			// rebuild would start from the last simulated pose and the face would creep (run 51: after many LooksMenu
+			// changes, the player's lips and jaw hung down).
+			std::unordered_map<RE::NiNode*, RE::NiTransform> nifLocal;
 			std::vector<FacePart> parts;
 			bool systemsBuilt = false;
 		};
@@ -304,8 +309,18 @@ namespace FO4SMP::PlayerPhysics
 		void ForgetFaceSystems()
 		{
 			if (const auto it = g_faces.find(S().formID); it != g_faces.end()) {
-				it->second.simulated.clear();
-				it->second.systemsBuilt = false;
+				auto& face = it->second;
+				// Back to the NIF's pose, parents first, so the next build starts from the rest shape.
+				for (const auto& n : face.nodes) {
+					if (const auto local = face.nifLocal.find(n.get()); local != face.nifLocal.end()) {
+						n->local = local->second;
+						if (n->parent) {
+							n->world = hdt::fo4::Compose(n->parent->world, n->local);
+						}
+					}
+				}
+				face.simulated.clear();
+				face.systemsBuilt = false;
 			}
 		}
 
@@ -400,6 +415,7 @@ namespace FO4SMP::PlayerPhysics
 									}
 									node->parent = parent;
 									node->world = hdt::fo4::Compose(parent->world, node->local);
+									face.nifLocal[node] = node->local;
 									face.nodes.push_back(RE::NiPointer<RE::NiNode>(node));
 									face.byName[a_name] = node;
 									ours.insert(node);
