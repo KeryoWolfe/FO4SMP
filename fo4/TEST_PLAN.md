@@ -20,7 +20,7 @@ Status column: as of the last build tested (run 45, CommonLibF4 alandtse). **Eve
 
 | # | Area | Steps | Expected (log) | Status |
 |---|---|---|---|---|
-| 1 | Installation | Install the release archive with MO2 into an empty mod; list its files. | `F4SE\Plugins\FO4SMP.dll`, `F4SE\Plugins\FO4SMP\` (configs, schema, docs, licences), `MCM\Config\FO4SMP\`, `Scripts\DynamicHDT.pex` and `.psc`. Nothing else. | Not run (archive target new) |
+| 1 | Installation | Install the release archive with MO2 into an empty mod; list its files. | `F4SE\Plugins\FO4SMP.dll`, `F4SE\Plugins\FO4SMP\` (configs, schema, docs, licences), `MCM\Config\FO4SMP\`, `Scripts\DynamicHDT.pex` and `.psc`. Nothing else. | Partial: archive contents checked (run 47); MO2 install not yet |
 | 2 | Dependency checks | Start with Address Library removed; then with FO4 Faster HDT-SMP enabled too. | "couldn't read ... version-1-11-240-0.bin" and no hooks; "Another SMP plugin is loaded". | Not run |
 | 3 | Runtime check | Start on another runtime (if available). | F4SE refuses the plugin, or "Unsupported runtime ... Not loading." | Not run |
 | 4 | Plugin loading | Start the game to the main menu. | "Address check: N OK, M hooked by another plugin, 0 failed", both hooks installed, "FO4SMP loaded", console report. | Pass (runs 1-45) |
@@ -39,7 +39,7 @@ Status column: as of the last build tested (run 45, CommonLibF4 alandtse). **Eve
 | 17 | Validator | Load with A-Body, TWB, SMP Head, an SMP hairstyle. | "Validator: ... passed" or problems with line numbers, once per file. | Pass (run 45) |
 | 18 | Compatibility | LooksMenu (open it and change hair), 4Stim, other animation mods in the load order. | LooksMenu's detour reported as hooked, not failed; a new hairstyle rebuilds face physics within ~15 s. | Partial: LooksMenu coexists; hair change in LooksMenu not tested |
 | 19 | Performance | A settlement with 30+ settlers; note fps and "physics step average" with default settings, then with more NPCs. | Default: physics step a few ms. | Partial: 25 ms per step with 40 simulated NPCs (run 35); culling since |
-| 20 | Packaging | Unpack the archive; compare with the source tree's `package/`; check licences and readme. | Every shipped file accounted for; GPL text, exceptions, schema licence, credits present. | Not run |
+| 20 | Packaging | Unpack the archive; compare with the source tree's `package/`; check licences and readme. | Every shipped file accounted for; GPL text, exceptions, schema licence, credits present. | Pass (run 47: 18 files, exactly `package/` plus the DLL and the compiled pex; readme says V1) |
 
 ## Failure paths
 
