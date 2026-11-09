@@ -49,6 +49,11 @@ namespace FO4SMP::Offsets
 	// (2690919) isn't in Address Library 1.11.240.
 	inline constexpr REL::ID PlayerCharacter_Singleton{ 2698073 };
 
+	// Main's static "game systems should update" flag (CommonLibF4 Main::QGameSystemsShouldUpdate, ID 2698031 =
+	// +0x32DD0FA in 1.11.240, the byte before QGameDataLoaded's 2698032). Main itself is OnIdle's `this`: freezeTime
+	// at +0x2A, inMenuMode at +0x1D0 (CommonLibF4 Main.h). Used to stop stepping while the game is paused.
+	inline constexpr REL::ID Main_GameSystemsShouldUpdate{ 2698031 };
+
 	// Armor attach (milestone 4). BipedAnim::ApplySkinnedObjects calls BipedAnim::AttachSkinnedObject from two
 	// places (1.11.240: +0x35DDB2 and +0x35DDDB, inside a chained chunk of the function); both are `call rel32`.
 	// FO4SMP hooks those calls, not the function: LooksMenu (f4ee.dll) detours the function itself, and a call

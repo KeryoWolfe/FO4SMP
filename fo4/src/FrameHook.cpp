@@ -49,9 +49,33 @@ namespace FO4SMP::FrameHook
 			g_stepMsMax = 0.0;
 		}
 
-		void Step()
+		// The game is paused (pause menu, Pip-Boy, loading): no physics step, so bodies don't keep moving under a frozen
+		// game (user, run 38). Logs each change, with the flags read, to confirm which flag follows the pause.
+		bool Paused(void* a_main)
+		{
+			static REL::Relocation<bool*> shouldUpdate{ Offsets::Main_GameSystemsShouldUpdate };
+			const auto main = reinterpret_cast<std::uintptr_t>(a_main);
+			const bool freezeTime = main && *reinterpret_cast<const bool*>(main + 0x2A);
+			const bool inMenuMode = main && *reinterpret_cast<const bool*>(main + 0x1D0);
+			const bool update = *shouldUpdate;
+			const bool paused = !update || freezeTime;
+			static bool s_paused = false;
+			static int s_logged = 0;
+			if (paused != s_paused && s_logged < 40) {
+				++s_logged;
+				logger::info("Frame step: {} (game systems update {}, freeze time {}, menu mode {})", paused ? "paused" : "resumed", update, freezeTime, inMenuMode);
+			}
+			s_paused = paused;
+			return paused;
+		}
+
+		void Step(void* a_main)
 		{
 			const auto now = std::chrono::steady_clock::now();
+			if (Paused(a_main)) {
+				g_lastFrame = now;  // no time passes for the physics while paused
+				return;
+			}
 			if (g_lastFrame.time_since_epoch().count() == 0) {
 				g_lastFrame = now;
 				g_reportStart = now;
@@ -82,7 +106,7 @@ namespace FO4SMP::FrameHook
 				return;
 			}
 			try {
-				Step();
+				Step(a_main);
 			} catch (const std::exception& e) {
 				g_stepping = false;
 				logger::critical("Frame step: stopped after an exception: {}", e.what());
