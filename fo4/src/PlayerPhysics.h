@@ -72,6 +72,9 @@ namespace FO4SMP::PlayerPhysics
 	};
 	void ApplySettings(const Settings& a_settings);
 
+	// Each frame, paused or not: face and hair physics stop while LooksMenu is open (run 52).
+	void CheckFaceEditor();
+
 	// Drops every actor's physics and forgets them (a save is loading); they're picked up again as their 3D loads.
 	void ResetAll(std::string_view a_why);
 }

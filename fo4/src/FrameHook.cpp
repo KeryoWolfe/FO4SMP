@@ -81,6 +81,7 @@ namespace FO4SMP::FrameHook
 		{
 			const auto now = std::chrono::steady_clock::now();
 			Settings::Poll();  // MCM changes are made while paused
+			PlayerPhysics::CheckFaceEditor();  // before the pause check: LooksMenu pauses the game
 			if (Paused(a_main)) {
 				g_lastFrame = now;  // no time passes for the physics while paused
 				return;

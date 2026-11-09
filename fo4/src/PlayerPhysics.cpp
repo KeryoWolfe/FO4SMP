@@ -25,6 +25,7 @@ namespace FO4SMP::PlayerPhysics
 			RE::BSTSmartPointer<hdt::Fo4System> system;
 			RE::NiPointer<RE::NiAVObject> model;  // the node the system was built from
 			std::string file;
+			bool face = false;  // a head part's system (BuildFaceSystems)
 		};
 
 
@@ -119,6 +120,7 @@ namespace FO4SMP::PlayerPhysics
 		bool g_npcPhysics = true;
 		bool g_facePhysics = true;
 		bool g_cullOffscreen = true;
+		bool g_faceEditing = false;  // LooksMenu (character creation, barber, surgeon, LooksMenu mod) is open
 		bool g_penisLegsNoCollide = true;  // the run-28 stopgap as a setting (MCM)
 		float g_npcDistance = 2000.0f;
 
@@ -1464,6 +1466,9 @@ namespace FO4SMP::PlayerPhysics
 			// The face may have been regenerated since the last look (LooksMenu, barber: the old head part shapes are
 			// detached and new ones made); look again so only shapes still on this skeleton are built. (BuildFace may
 			// add to g_faces, so the entry is looked up again after it.)
+			if (g_faceEditing) {
+				return;  // built again when the face editor closes
+			}
 			BuildFace(a_root);
 			auto& face = g_faces[S().formID];
 			face.systemsBuilt = true;
@@ -1511,7 +1516,7 @@ namespace FO4SMP::PlayerPhysics
 				LogCollisionFilter(system.get());
 				PhysicsWorld::Get()->AddSystem(system.get());
 				// The shape as the model: when the part goes (another hairstyle), the system is dropped.
-				S().built.push_back({ system, RE::NiPointer<RE::NiAVObject>(part.shape.get()), file });
+				S().built.push_back({ system, RE::NiPointer<RE::NiAVObject>(part.shape.get()), file, true });
 			}
 		}
 
@@ -2501,5 +2506,44 @@ namespace FO4SMP::PlayerPhysics
 		g_noCollision.clear();
 		g_unsimulatable.clear();
 		logger::info("Actor physics: everything reset ({}): {} actor(s), {} system(s) dropped", a_why, actors, systems);
+	}
+
+	// Run 52: with face physics on, every face regeneration in LooksMenu baked the face bones' current, simulated pose
+	// into the new head (the menu pauses the game, so the bones sat wherever physics last left them), and the face
+	// crept a little more each time. While the face editor is open, face and hair systems are dropped and their bones
+	// put back to the head part NIF's pose; they're built again when it closes. Called every frame, paused or not.
+	void CheckFaceEditor()
+	{
+		std::scoped_lock guard{ g_lock };
+		bool open = false;
+		if (auto* ui = RE::UI::GetSingleton()) {
+			static const RE::BSFixedString looksMenu{ "LooksMenu" };
+			open = ui->GetMenuOpen(looksMenu);
+		}
+		if (open == g_faceEditing) {
+			return;
+		}
+		g_faceEditing = open;
+		std::size_t dropped = 0;
+		for (auto& [id, state] : g_actors) {
+			g_current = &state;
+			if (open) {
+				for (auto it = state.built.begin(); it != state.built.end();) {
+					if (it->face) {
+						PhysicsWorld::Get()->RemoveSystem(it->system.get());
+						it = state.built.erase(it);
+						++dropped;
+					} else {
+						++it;
+					}
+				}
+				ForgetFaceSystems();  // bones back to the NIF's pose, rebuilt later
+			} else if (!state.built.empty() || state.simulate) {
+				state.nextCheck = std::chrono::steady_clock::now();  // face systems again on the next check
+			}
+		}
+		g_current = nullptr;
+		logger::info("Face editor {}: {}", open ? "opened" : "closed",
+			open ? std::format("{} face and hair system(s) dropped, face bones back to their rest pose", dropped) : std::string{ "face and hair physics built again" });
 	}
 }
