@@ -960,6 +960,25 @@ namespace FO4SMP::PlayerPhysics
 					Console::Print(std::format("FO4SMP: physics on the player from {} ({} bones simulated)", c.file, dynamic));
 				}
 
+				// A body's ground plane (A-Body's and TWB's VirtualGround: a square on the Root bone at the feet, shared
+				// "public") collides with every other actor too, so an NPC standing a step higher or lower puts an invisible
+				// floor through the player's groin or a woman's chest (run 36: the player's penis and Cait's breasts touching
+				// "Root(k)" thousands of times while near settlers). Keep ground planes to their own skeleton.
+				for (auto& mesh : system->meshes()) {
+					auto* body = static_cast<hdt::Fo4Body*>(mesh.get());
+					auto lower = [](std::string a_s) {
+						std::ranges::transform(a_s, a_s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+						return a_s;
+					};
+					bool ground = lower(body->m_name.c_str()).find("ground") != std::string::npos;
+					for (const auto& tag : body->m_tags) {
+						ground |= lower(tag.c_str()).find("ground") != std::string::npos;
+					}
+					if (ground && body->m_shared == hdt::Fo4Body::SharedType::SHARED_PUBLIC) {
+						body->m_shared = hdt::Fo4Body::SharedType::SHARED_INTERNAL;
+						if (Verbose()) logger::info("{}: collision body {} is a ground plane; it collides with this actor only", Label(), body->m_name.c_str());
+					}
+				}
 				if (!S().isPlayer && g_noCollision.contains(S().formID)) {
 					for (auto& mesh : system->meshes()) {
 						static_cast<hdt::Fo4Body*>(mesh.get())->m_disabled = true;
@@ -1178,6 +1197,54 @@ namespace FO4SMP::PlayerPhysics
 			}
 		}
 
+		// Diagnostic (run 36, the vanishing player): each frame, the player's 3D root and the built model's bounds and
+		// culled flag; logs when either turns odd (radius over 1,000 units or not finite, center over 500 units from
+		// the root, culled) and when it turns normal again, with the farthest simulated bone at that moment.
+		void WatchVisibility(RE::NiAVObject* a_root, std::chrono::steady_clock::time_point)
+		{
+			static bool s_odd = false;
+			static int s_logged = 0;
+			auto describe = [&](RE::NiAVObject* a_o, const char* a_what, bool& a_bad) {
+				const auto& b = a_o->worldBound;
+				const auto& c = b.center;
+				const auto& r = a_root->world.translate;
+				const float off = std::sqrt((c.x - r.x) * (c.x - r.x) + (c.y - r.y) * (c.y - r.y) + (c.z - r.z) * (c.z - r.z));
+				const bool bad = !std::isfinite(b.fRadius) || !std::isfinite(off) || b.fRadius > 1000.0f || off > 500.0f || a_o->GetAppCulled();
+				a_bad |= bad;
+				return std::format(" {} radius {:.0f}, center {:.0f} from the root{};", a_what, b.fRadius, off, a_o->GetAppCulled() ? ", culled" : "");
+			};
+			bool bad = false;
+			std::string line = describe(a_root, "3D", bad);
+			for (const auto& b : S().built) {
+				if (b.model) {
+					line += describe(b.model.get(), "model", bad);
+				}
+			}
+			if (bad != s_odd && s_logged < 40) {
+				++s_logged;
+				float farthest = 0.0f;
+				std::string farthestName;
+				for (const auto& b : S().built) {
+					for (auto& bone : b.system->getBones()) {
+						auto* fb = static_cast<hdt::Fo4Bone*>(bone.get());
+						if (fb->m_rig.isStaticOrKinematicObject() || !fb->m_node) {
+							continue;
+						}
+						const auto& w = fb->m_node->world.translate;
+						const auto& r = a_root->world.translate;
+						const float d = std::sqrt((w.x - r.x) * (w.x - r.x) + (w.y - r.y) * (w.y - r.y) + (w.z - r.z) * (w.z - r.z));
+						if (!(d <= farthest)) {
+							farthest = d;
+							farthestName = fb->m_name.c_str();
+						}
+					}
+				}
+				logger::warn("Player visibility: {}:{} farthest simulated bone node {} at {:.0f} units from the root",
+					bad ? "bounds turned odd" : "bounds normal again", line, farthestName, farthest);
+			}
+			s_odd = bad;
+		}
+
 		// One actor's frame: rebuild on a new physics attach or a new 3D, keep the kinematic added bones on their
 		// NIF parents, build when due, drop what's no longer attached. g_current is a_state.
 		void UpdateActor(ActorState& a_state, RE::NiAVObject* a_root, std::uint32_t a_generation, const hdt::DefaultBBPList& a_defaults, std::chrono::steady_clock::time_point a_now)
@@ -1225,6 +1292,7 @@ namespace FO4SMP::PlayerPhysics
 				ApplyFollow();  // every frame, before the physics reads the skeleton
 				if (S().isPlayer) {
 					TrackMotion(a_root, a_now);
+					WatchVisibility(a_root, a_now);
 				}
 			}
 			if (!a_root || a_now < S().nextCheck) {
