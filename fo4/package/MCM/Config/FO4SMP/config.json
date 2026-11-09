@@ -3,11 +3,64 @@
   "displayName": "FO4SMP Physics",
   "minMcmVersion": 2,
   "content": [
-    { "type": "section", "text": "NPCs" },
-    { "type": "switcher", "id": "bNPCPhysics:Main", "text": "NPC Physics", "help": "Off: only the player is simulated; NPCs keep their bodies' rest shape.", "valueOptions": { "sourceType": "ModSettingBool" } },
-    { "type": "slider", "id": "iMaxNPCs:Main", "text": "Simulated NPCs", "help": "How many of the nearest NPCs get physics at once. More costs frame time in crowded places. Until changed here, configs.json / userConfigs.json decide.", "valueOptions": { "min": 0, "max": 200, "step": 1, "sourceType": "ModSettingInt" } },
-    { "type": "slider", "id": "fNPCDistance:Main", "text": "NPC Physics Distance", "help": "NPCs farther than this (game units; 2000 is about 28 m) aren't simulated.", "valueOptions": { "min": 500, "max": 8000, "step": 100, "sourceType": "ModSettingFloat" } },
-    { "type": "section", "text": "Heads and Hair" },
-    { "type": "switcher", "id": "bFacePhysics:Main", "text": "Face and Hair Physics", "help": "Physics for head parts that carry it: SMP hair, SMP Head.", "valueOptions": { "sourceType": "ModSettingBool" } }
+    {
+      "type": "section",
+      "text": "NPCs"
+    },
+    {
+      "type": "switcher",
+      "id": "bNPCPhysics:Main",
+      "text": "NPC Physics",
+      "help": "Off: only the player is simulated; NPCs keep their bodies' rest shape.",
+      "valueOptions": {
+        "sourceType": "ModSettingBool"
+      }
+    },
+    {
+      "type": "slider",
+      "id": "iMaxNPCs:Main",
+      "text": "Simulated NPCs",
+      "help": "How many of the nearest NPCs get physics at once. More costs frame time in crowded places. Until changed here, configs.json / userConfigs.json decide.",
+      "valueOptions": {
+        "min": 0,
+        "max": 200,
+        "step": 1,
+        "sourceType": "ModSettingInt"
+      }
+    },
+    {
+      "type": "slider",
+      "id": "fNPCDistance:Main",
+      "text": "NPC Physics Distance",
+      "help": "NPCs farther than this (game units; 2000 is about 28 m) aren't simulated.",
+      "valueOptions": {
+        "min": 500,
+        "max": 8000,
+        "step": 100,
+        "sourceType": "ModSettingFloat"
+      }
+    },
+    {
+      "type": "switcher",
+      "id": "bCullNPCs:Main",
+      "text": "Pause Off-Screen NPCs",
+      "help": "NPCs out of the camera's view for a second stop being simulated (their bodies keep their shape) and resume when seen again. Saves frame time in crowds.",
+      "valueOptions": {
+        "sourceType": "ModSettingBool"
+      }
+    },
+    {
+      "type": "section",
+      "text": "Heads and Hair"
+    },
+    {
+      "type": "switcher",
+      "id": "bFacePhysics:Main",
+      "text": "Face and Hair Physics",
+      "help": "Physics for head parts that carry it: SMP hair, SMP Head.",
+      "valueOptions": {
+        "sourceType": "ModSettingBool"
+      }
+    }
   ]
 }

@@ -59,6 +59,9 @@ set(FSMP_CORE
 	"${FSMP_SRC}/hdtDefaultBBPList.cpp"
 	"${FSMP_SRC}/Patterns/hdtPatternLibrary.cpp"
 	"${FSMP_SRC}/Patterns/hdtXmlPatternExpander.cpp"
+	# Milestone 5: the validator's XSD check (FO4SMP_BUILD points it at FO4SMP's schema path).
+	"${FSMP_SRC}/Validator/Validators/hdtXSDValidator.cpp"
+	"${FSMP_SRC}/Validator/Parser/hdtXSDSchemaParser.cpp"
 )
 
 add_library(
@@ -79,6 +82,9 @@ add_library(
 	src/Papyrus.h
 	src/Settings.cpp
 	src/Settings.h
+	src/Validation.cpp
+	src/Validation.h
+	src/NetImmerseUtils.h
 	src/Offsets.h
 	src/PCH.h
 	src/PhysicsWorld.cpp
@@ -119,7 +125,7 @@ target_include_directories(
 # HDT_ACCUMULATE_OPPOSING_CONTACTS: FSMP's merge as it was before b102ea8 (May 2026), which A-Body's XML was
 # tuned against: contacts of a bone pair that push opposite ways are summed instead of the later ones being dropped.
 # Suspected of making the penis between the thighs jump from side to side (run 26); FO4 Faster HDT-SMP predates it.
-target_compile_definitions("${PROJECT_NAME}" PRIVATE BT_USE_SSE_IN_API NOMINMAX _SILENCE_AMP_DEPRECATION_WARNINGS HDT_ACCUMULATE_OPPOSING_CONTACTS)
+target_compile_definitions("${PROJECT_NAME}" PRIVATE FO4SMP_BUILD BT_USE_SSE_IN_API NOMINMAX _SILENCE_AMP_DEPRECATION_WARNINGS HDT_ACCUMULATE_OPPOSING_CONTACTS)
 
 target_link_libraries(
 	"${PROJECT_NAME}"

@@ -2,6 +2,8 @@
 // Fallout 4's scene graph and skinning; see fo4/README.md. Changes are marked "Fallout 4:".
 
 #include "Fo4System.h"
+
+#include "Validation.h"
 #include "hdtSkinnedMesh/hdtConstraintGroup.h"
 #include "hdtSkinnedMesh/hdtSkinnedMeshShape.h"
 #include "hdtSkinnedMesh/hdtSkinnedMeshWorld.h"  // RESET_PHYSICS
@@ -348,11 +350,13 @@ namespace hdt
 		// wins over the original (e.g. overrides\Meshes\A-Body\body\MaleBody.xml). Nothing ships there, so a
 		// build or update never replaces it, and the original mod's file stays untouched.
 		std::string loaded;
+		std::string readFrom = path.c_str();
 		if (std::filesystem::path{ path.c_str() }.is_relative()) {
 			const std::string overridePath = std::string{ "F4SE\\Plugins\\FO4SMP\\overrides\\" } + path.c_str();
 			loaded = readAllFile(overridePath.c_str());
 			if (!loaded.empty()) {
 				logger::info("Physics XML {}: using the override {}", path.c_str(), overridePath);
+				readFrom = overridePath;
 			}
 		}
 		if (loaded.empty()) {
@@ -361,6 +365,7 @@ namespace hdt
 		if (loaded.empty()) {
 			return nullptr;
 		}
+		FO4SMP::Validation::CheckOnce(readFrom, readFrom == path.c_str() ? std::string{ path.c_str() } : std::format("{} (override)", path.c_str()));
 		if (const int moved = BonesFirst(loaded)) {
 			logger::info("Physics XML {}: {} bone definition(s) came after other elements; read first, so shapes don't make those bones kinematic", path.c_str(), moved);
 		}

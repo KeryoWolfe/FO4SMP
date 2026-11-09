@@ -67,6 +67,9 @@ namespace FO4SMP::Settings
 			if (const auto v = number("main:bfacephysics")) {
 				settings.facePhysics = *v != 0.0;
 			}
+			if (const auto v = number("main:bcullnpcs")) {
+				settings.cullOffscreen = *v != 0.0;
+			}
 			if (const auto v = number("main:imaxnpcs")) {
 				settings.maxNpcs = static_cast<int>(std::lround(*v));
 			}

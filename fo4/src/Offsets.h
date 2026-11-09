@@ -64,6 +64,10 @@ namespace FO4SMP::Offsets
 	// pause the game, which F4SE's own input hooks test. The timer's delta didn't drop in the pause menu (run 40).
 	inline constexpr REL::ID UI_Singleton{ 4796314 };
 
+	// PlayerCamera* (F4SE 1.11.240 GameCamera.cpp g_playerCamera 0x030E6E58 = ID 4796065; Dear Modding's CommonLibF4
+	// has the same AE id). TESCamera::cameraNode at +0x20 (F4SE GameCamera.h). Culling (milestone 4).
+	inline constexpr REL::ID PlayerCamera_Singleton{ 4796065 };
+
 	// Milestone 5, per-actor bone nodes. F4SE 1.11.240 (GameAPI.cpp, NiNodes.h/.cpp): the main heap object
 	// g_mainHeap 0x03E74AB0 = ID 4807654; Heap::Allocate(size, alignment, aligned) 0x01657DE0 = ID 2267872;
 	// NiNode::NiNode(UInt16 children) 0x016BE500 = ID 2269948. Checked in the executable: the game itself

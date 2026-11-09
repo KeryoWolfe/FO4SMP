@@ -67,6 +67,10 @@ namespace FO4SMP::PlayerPhysics
 		std::optional<bool> facePhysics;
 		std::optional<int> maxNpcs;
 		std::optional<float> npcDistance;
+		std::optional<bool> cullOffscreen;
 	};
 	void ApplySettings(const Settings& a_settings);
+
+	// Drops every actor's physics and forgets them (a save is loading); they're picked up again as their 3D loads.
+	void ResetAll(std::string_view a_why);
 }

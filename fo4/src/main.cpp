@@ -117,8 +117,15 @@ namespace
 			}
 			StartPhysics();
 			break;
+		case F4SE::MessagingInterface::kPreLoadGame:
+			// As FSMP: nothing carries over from the previous game's actors; they're picked up as their 3D loads.
+			FO4SMP::PlayerPhysics::ResetAll("a save is loading");
+			break;
 		case F4SE::MessagingInterface::kPostLoadGame:
 		case F4SE::MessagingInterface::kNewGame:
+			if (a_msg->type == F4SE::MessagingInterface::kNewGame) {
+				FO4SMP::PlayerPhysics::ResetAll("a new game");
+			}
 			ReportInConsole();
 			break;
 		default:

@@ -73,6 +73,9 @@ namespace FO4SMP::PlayerPhysics
 			std::chrono::steady_clock::time_point rootSince{};
 			std::vector<std::pair<RE::NiAVObject*, std::uint32_t>> unresolvedShapes;  // per shape, filled by Walk
 			bool waiting = false;
+			// Milestone 4 (culling): an NPC out of the camera's view keeps its systems but leaves the physics world.
+			bool suspended = false;
+			std::chrono::steady_clock::time_point outOfViewSince{};
 		};
 		std::map<std::uint32_t, ActorState> g_actors;  // by form ID; the player is 0x14
 		ActorState* g_current = nullptr;               // the actor the functions below work on
@@ -115,6 +118,7 @@ namespace FO4SMP::PlayerPhysics
 		// Milestone 5: settings (MCM).
 		bool g_npcPhysics = true;
 		bool g_facePhysics = true;
+		bool g_cullOffscreen = true;
 		float g_npcDistance = 2000.0f;
 
 
@@ -146,6 +150,8 @@ namespace FO4SMP::PlayerPhysics
 		void Drop(std::string_view a_why)
 		{
 			ForgetFaceSystems();
+			S().suspended = false;
+			S().outOfViewSince = {};
 			if (S().built.empty()) {
 				return;
 			}
@@ -515,8 +521,10 @@ namespace FO4SMP::PlayerPhysics
 			if (it == g_faces.end() || it->second.root != a_root) {
 				return;
 			}
+			// While the actor's physics is suspended (out of view), simulated nodes follow too, from their last local
+			// transform, so hair stays on the head and resumes from there.
 			for (const auto& n : it->second.nodes) {
-				if (n->parent && !it->second.simulated.contains(n.get())) {
+				if (n->parent && (S().suspended || !it->second.simulated.contains(n.get()))) {
 					n->world = hdt::fo4::Compose(n->parent->world, n->local);
 				}
 			}
@@ -1489,6 +1497,86 @@ namespace FO4SMP::PlayerPhysics
 		// After an explosion: the simulated bones of the actor(s) whose bones exploded back on their rest pose, at
 		// rest. Only those actors: resetting everyone made the player's penis snap straight and shake whenever a
 		// nearby NPC's exploded (run 32).
+		// Milestone 4 (culling): the camera, for which NPCs are in view. Its node (TESCamera::cameraNode, +0x20 of
+		// F4SE's g_playerCamera) gives the position; which of its rotation's axes points forward is learned in third
+		// person, where the player stands in front of the camera (the axis that points from the camera at the player,
+		// over 30 frames). Until then, and with culling off, every NPC counts as in view.
+		struct Camera
+		{
+			bool valid = false;
+			RE::NiPoint3 position;
+			RE::NiPoint3 forward;
+		};
+		Camera g_camera;
+		int g_cameraAxis = -1;  // 0-5: rotation row 0-2 or column 0-2; 6-11: the same, negated
+		std::array<int, 12> g_cameraVotes{};
+
+		RE::NiPoint3 CameraAxis(const RE::NiMatrix3& a_r, int a_axis)
+		{
+			const int k = a_axis % 6;
+			const float sign = a_axis >= 6 ? -1.0f : 1.0f;
+			if (k < 3) {
+				return { a_r.entry[k][0] * sign, a_r.entry[k][1] * sign, a_r.entry[k][2] * sign };
+			}
+			return { a_r.entry[0][k - 3] * sign, a_r.entry[1][k - 3] * sign, a_r.entry[2][k - 3] * sign };
+		}
+
+		void UpdateCamera(RE::NiAVObject* a_playerRoot)
+		{
+			g_camera.valid = false;
+			static REL::Relocation<std::uintptr_t*> singleton{ Offsets::PlayerCamera_Singleton };
+			const auto camera = *singleton;
+			if (!camera) {
+				return;
+			}
+			auto* node = *reinterpret_cast<RE::NiAVObject* const*>(camera + 0x20);
+			if (!node) {
+				return;
+			}
+			const auto& p = node->world.translate;
+			if (g_cameraAxis < 0 && a_playerRoot) {
+				const auto& q = a_playerRoot->world.translate;
+				RE::NiPoint3 d{ q.x - p.x, q.y - p.y, q.z + 90.0f - p.z };
+				const float length = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+				if (length > 80.0f && length < 1000.0f) {  // third person
+					d = { d.x / length, d.y / length, d.z / length };
+					int best = 0;
+					float bestDot = -2.0f;
+					for (int axis = 0; axis < 12; ++axis) {
+						const auto a = CameraAxis(node->world.rotate, axis);
+						const float dot = a.x * d.x + a.y * d.y + a.z * d.z;
+						if (dot > bestDot) {
+							bestDot = dot;
+							best = axis;
+						}
+					}
+					if (bestDot > 0.8f && ++g_cameraVotes[best] >= 30) {
+						g_cameraAxis = best;
+						logger::info("Culling: the camera looks along its rotation's {} {}{} (learned in third person); NPCs out of view for 1 s leave the physics world",
+							best % 6 < 3 ? "row" : "column", best % 3, best >= 6 ? ", negated" : "");
+					}
+				}
+			}
+			if (g_cameraAxis < 0) {
+				return;
+			}
+			g_camera = { true, p, CameraAxis(node->world.rotate, g_cameraAxis) };
+		}
+
+		bool InView(const RE::NiPoint3& a_position)
+		{
+			if (!g_cullOffscreen || !g_camera.valid) {
+				return true;
+			}
+			const RE::NiPoint3 v{ a_position.x - g_camera.position.x, a_position.y - g_camera.position.y, a_position.z + 80.0f - g_camera.position.z };
+			const float distance = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+			if (distance < 300.0f) {
+				return true;  // beside the player (a companion): kept, whatever the camera does
+			}
+			const auto& f = g_camera.forward;
+			return (v.x * f.x + v.y * f.y + v.z * f.z) / distance > 0.34f;  // within about 70 degrees of the view direction
+		}
+
 		void ResetAfterExplosion(std::chrono::steady_clock::time_point a_now)
 		{
 			++g_systemResets;
@@ -1822,10 +1910,49 @@ namespace FO4SMP::PlayerPhysics
 				return;
 			}
 			if (a_root && !S().built.empty()) {
+				// Every frame: a model taken off (outfit removed) drops its physics at once.
+				for (const auto& b : S().built) {
+					if (!IsAttachedUnder(b.model.get(), a_root)) {
+						Drop(std::format("'{}' is no longer attached", b.model->name.c_str()));
+						S().reportedEmpty = false;
+						S().nextCheck = a_now + Seconds(kScanDelaySeconds);
+						return;
+					}
+				}
 				ApplyFollow();  // every frame, before the physics reads the skeleton
 				if (S().isPlayer) {
 					TrackMotion(a_root, a_now);
 					WatchVisibility(a_root, a_now);
+				} else {
+					// Culling: out of view for a second, the NPC's systems leave the world (kept built); back in view,
+					// they return and start again from the current pose (FSMP's re-initialisation on AddSystem).
+					static int s_logged = 0;
+					if (InView(a_root->world.translate)) {
+						S().outOfViewSince = {};
+						if (S().suspended) {
+							for (const auto& b : S().built) {
+								PhysicsWorld::Get()->AddSystem(b.system.get());
+							}
+							S().suspended = false;
+							if (s_logged < 40) {
+								++s_logged;
+								logger::info("{}: back in view; physics resumed", Label());
+							}
+						}
+					} else if (!S().suspended) {
+						if (!S().outOfViewSince.time_since_epoch().count()) {
+							S().outOfViewSince = a_now;
+						} else if (a_now - S().outOfViewSince > std::chrono::seconds(1)) {
+							for (const auto& b : S().built) {
+								PhysicsWorld::Get()->RemoveSystem(b.system.get());
+							}
+							S().suspended = true;
+							if (s_logged < 40) {
+								++s_logged;
+								logger::info("{}: out of view; physics suspended", Label());
+							}
+						}
+					}
 				}
 			}
 			if (!a_root || a_now < S().nextCheck) {
@@ -1855,14 +1982,6 @@ namespace FO4SMP::PlayerPhysics
 				}
 			}
 
-			for (const auto& b : S().built) {
-				if (!IsAttachedUnder(b.model.get(), a_root)) {
-					Drop(std::format("'{}' is no longer attached", b.model->name.c_str()));
-					S().reportedEmpty = false;
-					S().nextCheck = a_now + Seconds(kScanDelaySeconds);
-					return;
-				}
-			}
 			BuildFaceSystems(a_root);  // face parts found after the outfit's physics was built
 			S().nextCheck = a_now + Seconds(kAttachCheckSeconds);
 		}
@@ -2002,6 +2121,7 @@ namespace FO4SMP::PlayerPhysics
 		};
 
 		auto* playerRoot = PlayerRoot();
+		UpdateCamera(playerRoot);
 		static auto nextSelect = now;
 		if (now >= nextSelect) {
 			// Milestone 5: NPCs without a physics outfit whose face has physics (SMP hair), within reach.
@@ -2101,7 +2221,7 @@ namespace FO4SMP::PlayerPhysics
 	{
 		std::scoped_lock guard{ g_lock };
 		const auto* state = Find(a_formID);
-		return state && !state->simulate;
+		return state && (!state->simulate || state->suspended);
 	}
 
 	std::vector<bool> ToggleBones(std::uint32_t a_formID, const std::vector<std::string>& a_names, bool a_on)
@@ -2268,6 +2388,7 @@ namespace FO4SMP::PlayerPhysics
 		const bool faceChanged = a_settings.facePhysics && *a_settings.facePhysics != g_facePhysics;
 		g_npcPhysics = a_settings.npcPhysics.value_or(g_npcPhysics);
 		g_facePhysics = a_settings.facePhysics.value_or(g_facePhysics);
+		g_cullOffscreen = a_settings.cullOffscreen.value_or(g_cullOffscreen);
 		if (a_settings.npcDistance) {
 			g_npcDistance = std::clamp(*a_settings.npcDistance, 200.0f, 8000.0f);
 		}
@@ -2283,5 +2404,29 @@ namespace FO4SMP::PlayerPhysics
 				}
 			}
 		}
+	}
+
+	void ResetAll(std::string_view a_why)
+	{
+		std::scoped_lock guard{ g_lock };
+		std::size_t systems = 0;
+		for (auto& [id, state] : g_actors) {
+			g_current = &state;
+			systems += state.built.size();
+			Drop(a_why);
+			ClearPlacement();
+		}
+		const auto actors = g_actors.size();
+		g_actors.clear();
+		g_current = nullptr;
+		for (auto& [id, face] : g_faces) {
+			g_faceGraveyard.insert(g_faceGraveyard.end(), face.nodes.begin(), face.nodes.end());
+		}
+		g_faces.clear();
+		g_faceProbe.clear();
+		g_quarantined.clear();
+		g_noCollision.clear();
+		g_unsimulatable.clear();
+		logger::info("Actor physics: everything reset ({}): {} actor(s), {} system(s) dropped", a_why, actors, systems);
 	}
 }
