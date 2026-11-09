@@ -61,6 +61,12 @@ namespace FO4SMP::PlayerPhysics
 			std::vector<Built> built;
 			std::unordered_map<RE::NiNode*, Rest> rest;
 			std::vector<Follow> follow;
+			// Milestone 5: face bones (SMP Head's Head_SMP_*) that Fallout 4's face generation leaves outside the scene
+			// graph; each subtree top is kept on its skeleton anchor every frame (anchor's world composed with the top's
+			// own NIF local).
+			std::vector<std::pair<RE::NiPointer<RE::NiNode>, RE::NiNode*>> headFollow;  // top, anchor
+			RE::NiAVObject* headCheckedRoot = nullptr;  // the 3D the face bones were last looked for in
+			std::chrono::steady_clock::time_point headCheckAt{};
 			bool usingNifPlacement = false;
 			std::vector<RE::NiNode*> restOrder;  // placed added bones, parents first
 			RE::NiNode* rootBone = nullptr;
@@ -133,6 +139,21 @@ namespace FO4SMP::PlayerPhysics
 			S().placed = false;
 		}
 
+		void PropagateWorld(RE::NiNode* a_parent, int a_depth = 0)
+		{
+			if (a_depth > 64) {
+				return;
+			}
+			for (auto& child : hdt::fo4::Children(a_parent)) {
+				if (auto* c = child.get()) {
+					c->world = hdt::fo4::Compose(a_parent->world, c->local);
+					if (auto* n = hdt::castNiNode(c)) {
+						PropagateWorld(n, a_depth + 1);
+					}
+				}
+			}
+		}
+
 		bool IsAttachedUnder(RE::NiAVObject* a_object, RE::NiAVObject* a_root)
 		{
 			for (auto* o = a_object; o; o = o->parent) {
@@ -141,6 +162,83 @@ namespace FO4SMP::PlayerPhysics
 				}
 			}
 			return false;
+		}
+
+		// Milestone 5: Fallout 4's face generation skins head parts to bones the skeleton doesn't have (SMP Head's
+		// Head_SMP_*) but leaves those bones outside the scene graph, unplaced: at the world origin (run 38:
+		// Head_SMP_Cheeks.L ~69,600 units from the player). The head's skinned bounds then stretch to the origin, the
+		// player's 3D bound grows to ~35,000 units, and after the camera pulls in the player stays faded (the camera is
+		// "inside" the player). Each such bone's subtree is anchored where its NIF puts it: its first ancestor named
+		// like a skeleton bone (HEAD) gives the anchor, and the subtree keeps its NIF locals.
+		void BuildHeadFollow(RE::NiAVObject* a_root)
+		{
+			const auto previous = S().headFollow.size();
+			S().headFollow.clear();
+			auto* skeleton = hdt::castNiNode(a_root);
+			if (!skeleton) {
+				return;
+			}
+			std::set<RE::NiNode*> tops;
+			std::vector<std::string> unanchored;
+			std::function<void(RE::NiAVObject*, int)> walk = [&](RE::NiAVObject* a_o, int a_depth) {
+				if (!a_o || a_depth > 40) {
+					return;
+				}
+				if (auto* tri = hdt::castBSTriShape(a_o)) {
+					hdt::fo4::SkinnedShape skinned;
+					if (hdt::fo4::ReadSkinnedShape(tri, skinned, false).empty()) {
+						for (const auto& b : skinned.bones) {
+							if (!b.node || IsAttachedUnder(b.node, a_root)) {
+								continue;
+							}
+							RE::NiNode* top = b.node;
+							RE::NiNode* anchor = nullptr;
+							std::string chain = top->name.c_str();
+							for (int guard = 0; top->parent && guard < 32; ++guard) {
+								chain += std::string{ " < " } + top->parent->name.c_str();
+								if (auto* skel = hdt::fo4::findNode(skeleton, top->parent->name); skel && skel != top->parent) {
+									anchor = skel;
+									break;
+								}
+								top = top->parent;
+							}
+							if (!anchor) {
+								if (unanchored.size() < 8) {
+									unanchored.push_back(chain);
+								}
+								continue;
+							}
+							if (tops.insert(top).second) {
+								S().headFollow.push_back({ RE::NiPointer<RE::NiNode>(top), anchor });
+								if (Verbose()) logger::info("{}: face bone subtree '{}' (shape '{}') anchored on '{}'; chain {}", Label(), top->name.c_str(), tri->name.c_str(), anchor->name.c_str(), chain);
+							}
+						}
+					}
+				}
+				if (auto* n = hdt::castNiNode(a_o)) {
+					for (auto& child : hdt::fo4::Children(n)) {
+						walk(child.get(), a_depth + 1);
+					}
+				}
+			};
+			walk(a_root, 0);
+			if (S().headFollow.size() == previous) {
+				return;  // unchanged (the player's periodic look)
+			}
+			for (const auto& c : unanchored) {
+				logger::info("{}: skin bone outside the 3D with no ancestor named like a skeleton bone; left as it is: {}", Label(), c);
+			}
+			if (!S().headFollow.empty()) {
+				logger::info("{}: {} face bone subtree(s) outside the scene graph anchored on the skeleton", Label(), S().headFollow.size());
+			}
+		}
+
+		void ApplyHeadFollow()
+		{
+			for (const auto& [top, anchor] : S().headFollow) {
+				top->world = hdt::fo4::Compose(anchor->world, top->local);
+				PropagateWorld(top.get());
+			}
 		}
 
 		// Diagnostic: where each collision body's vertices and each simulated bone are, in the frame of the
@@ -1322,6 +1420,20 @@ namespace FO4SMP::PlayerPhysics
 		void UpdateActor(ActorState& a_state, RE::NiAVObject* a_root, std::uint32_t a_generation, const hdt::DefaultBBPList& a_defaults, std::chrono::steady_clock::time_point a_now)
 		{
 			g_current = &a_state;
+			// Milestone 5: face bones outside the scene graph, for every actor handled here (player, simulated, placed).
+			if (a_root != S().headCheckedRoot) {
+				S().headFollow.clear();
+				S().headCheckedRoot = a_root;
+				S().headCheckAt = a_now + Seconds(kScanDelaySeconds);
+			}
+			if (a_root && S().headCheckAt.time_since_epoch().count() && a_now >= S().headCheckAt) {
+				BuildHeadFollow(a_root);
+				// The player's face can be rebuilt in place (LooksMenu, a new hairstyle): look again now and then.
+				S().headCheckAt = S().isPlayer ? a_now + Seconds(15.0) : std::chrono::steady_clock::time_point{};
+			}
+			if (a_root) {
+				ApplyHeadFollow();
+			}
 			if (!S().simulate) {
 				if (a_generation != S().generation || a_root != S().root) {
 					S().generation = a_generation;
