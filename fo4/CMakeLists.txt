@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
 	FO4SMP
-	VERSION 0.3.0
+	VERSION 0.9.0
 	LANGUAGES CXX
 )
 
@@ -160,4 +160,74 @@ if(FO4SMP_DEPLOY_DIR)
 		COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/package" "${FO4SMP_DEPLOY_DIR}"
 		VERBATIM
 	)
+endif()
+
+# DynamicHDT.pex, compiled with the Creation Kit's Papyrus compiler when FO4SMP_FALLOUT4_DIR names the game folder
+# (it holds "Papyrus Compiler\PapyrusCompiler.exe" and Data\Scripts\Source with Base). Rebuilt when the .psc changes;
+# copied into FO4SMP_DEPLOY_DIR\Scripts when that is set, and packed by the release target.
+set(FO4SMP_FALLOUT4_DIR "" CACHE PATH "Optional Fallout 4 folder with the Creation Kit's Papyrus compiler, to compile DynamicHDT.pex.")
+set(FO4SMP_PEX "${CMAKE_CURRENT_BINARY_DIR}/Scripts/DynamicHDT.pex")
+set(FO4SMP_PSC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/package/Scripts/Source/User")
+if(FO4SMP_FALLOUT4_DIR)
+	set(_compiler "${FO4SMP_FALLOUT4_DIR}/Papyrus Compiler/PapyrusCompiler.exe")
+	set(_sources "${FO4SMP_FALLOUT4_DIR}/Data/Scripts/Source")
+	if(NOT EXISTS "${_compiler}")
+		message(WARNING "FO4SMP_FALLOUT4_DIR: no Papyrus compiler at ${_compiler}; DynamicHDT.pex won't be compiled")
+	else()
+		# Run from the script's own folder: the compiler names a script after its path relative to the working directory.
+		add_custom_command(
+			OUTPUT "${FO4SMP_PEX}"
+			COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/Scripts"
+			COMMAND "${_compiler}" DynamicHDT.psc -f=Institute_Papyrus_Flags.flg "-i=${FO4SMP_PSC_DIR}$<SEMICOLON>${_sources}$<SEMICOLON>${_sources}/Base" "-o=${CMAKE_CURRENT_BINARY_DIR}/Scripts" -release -final
+			WORKING_DIRECTORY "${FO4SMP_PSC_DIR}"
+			DEPENDS "${FO4SMP_PSC_DIR}/DynamicHDT.psc"
+			COMMENT "Compiling DynamicHDT.psc"
+			VERBATIM
+		)
+		add_custom_target(DynamicHDTScript ALL DEPENDS "${FO4SMP_PEX}")
+		if(FO4SMP_DEPLOY_DIR)
+			add_custom_command(
+				TARGET DynamicHDTScript POST_BUILD
+				COMMAND "${CMAKE_COMMAND}" -E make_directory "${FO4SMP_DEPLOY_DIR}/Scripts"
+				COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${FO4SMP_PEX}" "${FO4SMP_DEPLOY_DIR}/Scripts/"
+				VERBATIM
+			)
+		endif()
+	endif()
+endif()
+
+# The release archive: `cmake --build --preset release --target release_zip` writes
+# build/release/FO4SMP-<version>.zip, laid out as a mod folder (Data's contents): F4SE\Plugins\FO4SMP.dll and its
+# folder (configs, schema, licences, readme), MCM\Config\FO4SMP, Scripts\DynamicHDT.pex (needs FO4SMP_FALLOUT4_DIR)
+# and Scripts\Source\User\DynamicHDT.psc. The PDB goes in a separate archive. Source: the GitHub repository (GPL-3).
+set(_stage "${CMAKE_CURRENT_BINARY_DIR}/release-stage")
+set(_zip "${CMAKE_CURRENT_BINARY_DIR}/FO4SMP-${PROJECT_VERSION}.zip")
+set(_pdbzip "${CMAKE_CURRENT_BINARY_DIR}/FO4SMP-${PROJECT_VERSION}-pdb.zip")
+set(_release_commands
+	COMMAND "${CMAKE_COMMAND}" -E rm -rf "${_stage}"
+	COMMAND "${CMAKE_COMMAND}" -E make_directory "${_stage}/mod/F4SE/Plugins" "${_stage}/pdb/F4SE/Plugins"
+	COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/package" "${_stage}/mod"
+	COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_FILE:${PROJECT_NAME}>" "${_stage}/mod/F4SE/Plugins/"
+	COMMAND "${CMAKE_COMMAND}" -E copy "$<TARGET_PDB_FILE:${PROJECT_NAME}>" "${_stage}/pdb/F4SE/Plugins/"
+)
+if(TARGET DynamicHDTScript)
+	list(APPEND _release_commands
+		COMMAND "${CMAKE_COMMAND}" -E make_directory "${_stage}/mod/Scripts"
+		COMMAND "${CMAKE_COMMAND}" -E copy "${FO4SMP_PEX}" "${_stage}/mod/Scripts/"
+	)
+endif()
+add_custom_target(
+	release_zip
+	${_release_commands}
+	COMMAND "${CMAKE_COMMAND}" -E rm -f "${_zip}" "${_pdbzip}"
+	COMMAND "${CMAKE_COMMAND}" -E chdir "${_stage}/mod" "${CMAKE_COMMAND}" -E tar cf "${_zip}" --format=zip .
+	COMMAND "${CMAKE_COMMAND}" -E chdir "${_stage}/pdb" "${CMAKE_COMMAND}" -E tar cf "${_pdbzip}" --format=zip .
+	COMMENT "Packing ${_zip}"
+	VERBATIM
+)
+add_dependencies(release_zip "${PROJECT_NAME}")
+if(TARGET DynamicHDTScript)
+	add_dependencies(release_zip DynamicHDTScript)
+else()
+	message(STATUS "release_zip: FO4SMP_FALLOUT4_DIR isn't set, so the archive will have DynamicHDT.psc but no DynamicHDT.pex")
 endif()
