@@ -68,6 +68,7 @@ namespace FO4SMP::PlayerPhysics
 		std::optional<int> maxNpcs;
 		std::optional<float> npcDistance;
 		std::optional<bool> cullOffscreen;
+		std::optional<bool> penisLegsNoCollide;
 	};
 	void ApplySettings(const Settings& a_settings);
 

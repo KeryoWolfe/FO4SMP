@@ -64,6 +64,19 @@
     },
     {
       "type": "section",
+      "text": "Bodies"
+    },
+    {
+      "type": "switcher",
+      "id": "bPenisLegsNoCollide:Main",
+      "text": "A-Body: Penis Doesn't Collide With Legs",
+      "help": "Workaround for a known FO4SMP issue: with A-Body's male SMP, contact between the penis and the legs can make the penis jitter or fly out. On: those two collision bodies ignore each other (everything else collides as A-Body intends). Turn off to test A-Body's collisions as authored.",
+      "valueOptions": {
+        "sourceType": "ModSettingBool"
+      }
+    },
+    {
+      "type": "section",
       "text": "Troubleshooting"
     },
     {

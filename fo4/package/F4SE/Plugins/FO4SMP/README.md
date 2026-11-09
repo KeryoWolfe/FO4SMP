@@ -51,7 +51,7 @@ other mods swapped through DynamicHDT with "persist" on, and F4SE ignores that d
 ## Settings
 
 - **MCM page "FO4SMP Physics"**: NPC physics on/off, how many NPCs, how far, pause off-screen NPCs, face and hair
-  physics, verbose log. A value counts once you change it there; until then `configs.json` decides.
+  physics, the A-Body penis/legs workaround, verbose log. A value counts once you change it there; until then `configs.json` decides.
 - **`F4SE\Plugins\FO4SMP\configs.json`**: FSMP's settings (solver, wind, `maximumActiveSkeletons`...). Put your own
   changes in `userConfigs.json` beside it (same layout, only the values you change), so updates don't overwrite them.
   Example: `{ "smp": { "maximumActiveSkeletons": 20 } }`.
@@ -61,9 +61,9 @@ other mods swapped through DynamicHDT with "persist" on, and F4SE ignores that d
 
 ## Known limitations
 
-- **A-Body's penis against the legs** can make the penis chain jitter or fly out. Workaround: an override of
-  `MaleBody.xml` with the `VirtualPenis` / `VirtualLegs` collision off (see Overrides). The cause is still being
-  looked for.
+- **A-Body's penis against the legs** can make the penis chain jitter or fly out. FO4SMP works around it by
+  default: the settings page's "A-Body: Penis Doesn't Collide With Legs" (on) makes those two collision bodies ignore
+  each other; everything else collides as A-Body intends. The cause is still being looked for.
 - **Many NPCs cost frame time**: about 25 ms per physics step with 40 simulated settlers. Lower the NPC count, or
   leave "Pause Off-Screen NPCs" on.
 - An NPC gets face or hair physics only if FO4SMP has seen it attach an outfit or body (nearly all do).

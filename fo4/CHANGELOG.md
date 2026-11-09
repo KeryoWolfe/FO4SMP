@@ -31,11 +31,12 @@ First release. Fallout 4 1.11.240 (Steam) only.
 
 - DynamicHDT: `ReloadPhysicsFile`, `SwapPhysicsFile`, `QueryCurrentPhysicsFile`, `TogglePhysics`, `ResetPhysics`,
   `HasPhysicsSystem`, `IsSoftSuspended`. Swaps made with "persist" are kept in the save.
-- MCM page: NPC physics, NPC count and distance, pausing off-screen NPCs, face and hair physics, verbose log.
+- MCM page: NPC physics, NPC count and distance, pausing off-screen NPCs, face and hair physics, the A-Body
+  penis/legs workaround (on by default), verbose log.
 
 ### Known limitations
 
-See the readme: A-Body's penis-vs-legs collision (override workaround), frame time with dozens of NPCs, FSMP
+See the readme: A-Body's penis-vs-legs collision (worked around by a setting, on by default), frame time with dozens of NPCs, FSMP
 features not ported (console commands, in-game menu, NIF checks, wind, first person).
 
 ## Development history

@@ -119,6 +119,7 @@ namespace FO4SMP::PlayerPhysics
 		bool g_npcPhysics = true;
 		bool g_facePhysics = true;
 		bool g_cullOffscreen = true;
+		bool g_penisLegsNoCollide = true;  // the run-28 stopgap as a setting (MCM)
 		float g_npcDistance = 2000.0f;
 
 
@@ -889,6 +890,50 @@ namespace FO4SMP::PlayerPhysics
 
 		// Logs each collision body's tags and filters, and which body pairs the filters let collide, so a
 		// contact between bodies the XML keeps apart (e.g. VirtualPenis vs VirtualLegs) shows up as a filter bug.
+		// The run-28 stopgap as a setting: A-Body's VirtualPenis and VirtualLegs collision bodies don't collide with each
+		// other (penis-vs-legs contacts make the penis chain explode in FO4SMP; the cause is still open). Applied to
+		// every system that has both bodies, after it's built, as the hand-edited override XML did; A-Body's file is
+		// untouched.
+		void ApplyPenisLegsStopgap(hdt::Fo4System* a_system)
+		{
+			if (!g_penisLegsNoCollide) {
+				return;
+			}
+			hdt::SkinnedMeshBody* penis = nullptr;
+			hdt::SkinnedMeshBody* legs = nullptr;
+			for (auto& m : a_system->meshes()) {
+				const std::string_view name{ m->m_name.c_str() };
+				if (name == "VirtualPenis") {
+					penis = m.get();
+				} else if (name == "VirtualLegs") {
+					legs = m.get();
+				}
+			}
+			if (!penis || !legs) {
+				return;
+			}
+			// A body collides with another only if each allows the other (FSMP: canCollideWith both ways), so one side
+			// refusing is enough; both are set, as the override did.
+			auto refuse = [](hdt::SkinnedMeshBody* a_body, const hdt::SkinnedMeshBody* a_other) {
+				for (const auto& tag : a_other->m_tags) {
+					a_body->m_noCollideWithTags.insert(tag);
+					if (!a_body->m_canCollideWithTags.empty()) {
+						a_body->m_canCollideWithTags.erase(tag);
+						if (a_body->m_canCollideWithTags.empty()) {
+							a_body->m_canCollideWithTags.insert(RE::BSFixedString("FO4SMP:none"));  // still a list: nothing
+						}
+					}
+				}
+			};
+			refuse(penis, legs);
+			refuse(legs, penis);
+			static int s_logged = 0;
+			if (s_logged < 20) {
+				++s_logged;
+				logger::info("{}: VirtualPenis and VirtualLegs set not to collide (setting \"A-Body: penis doesn't collide with legs\")", Label());
+			}
+		}
+
 		void LogCollisionFilter(hdt::Fo4System* a_system)
 		{
 			const auto& meshes = a_system->meshes();
@@ -1379,6 +1424,7 @@ namespace FO4SMP::PlayerPhysics
 					}
 					logger::info("{}: collisions off for this NPC (its physics kept exploding)", Label());
 				}
+				ApplyPenisLegsStopgap(system.get());
 				LogCollisionFilter(system.get());
 				BuildFollow(skeleton, system.get());
 				PhysicsWorld::Get()->AddSystem(system.get());
@@ -2398,18 +2444,20 @@ namespace FO4SMP::PlayerPhysics
 		g_npcPhysics = a_settings.npcPhysics.value_or(g_npcPhysics);
 		g_facePhysics = a_settings.facePhysics.value_or(g_facePhysics);
 		g_cullOffscreen = a_settings.cullOffscreen.value_or(g_cullOffscreen);
+		const bool stopgapChanged = a_settings.penisLegsNoCollide && *a_settings.penisLegsNoCollide != g_penisLegsNoCollide;
+		g_penisLegsNoCollide = a_settings.penisLegsNoCollide.value_or(g_penisLegsNoCollide);
 		if (a_settings.npcDistance) {
 			g_npcDistance = std::clamp(*a_settings.npcDistance, 200.0f, 8000.0f);
 		}
 		if (a_settings.maxNpcs) {
 			g_maxActive = std::max(1, *a_settings.maxNpcs + 1);
 		}
-		logger::info("Settings: NPC physics {}, face and hair physics {}, up to {} NPC(s) within {:.0f} units, off-screen NPCs {}", g_npcPhysics ? "on" : "off",
-			g_facePhysics ? "on" : "off", g_maxActive - 1, g_npcDistance, g_cullOffscreen ? "paused" : "kept");
-		if (faceChanged) {
+		logger::info("Settings: NPC physics {}, face and hair physics {}, up to {} NPC(s) within {:.0f} units, off-screen NPCs {}, A-Body penis/legs collision {}",
+			g_npcPhysics ? "on" : "off", g_facePhysics ? "on" : "off", g_maxActive - 1, g_npcDistance, g_cullOffscreen ? "paused" : "kept", g_penisLegsNoCollide ? "off" : "as authored");
+		if (faceChanged || stopgapChanged) {
 			for (auto& [id, state] : g_actors) {
 				if (!state.built.empty()) {
-					Rebuild(state, g_facePhysics ? "face and hair physics turned on" : "face and hair physics turned off");
+					Rebuild(state, faceChanged ? (g_facePhysics ? "face and hair physics turned on" : "face and hair physics turned off") : "the penis/legs setting changed");
 				}
 			}
 		}

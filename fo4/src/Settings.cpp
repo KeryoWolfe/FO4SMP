@@ -81,6 +81,9 @@ namespace FO4SMP::Settings
 					logger::info("Settings: verbose log {}", verbose ? "on (debug lines and diagnostics)" : "off");
 				}
 			}
+			if (const auto v = number("main:bpenislegsnocollide")) {
+				settings.penisLegsNoCollide = *v != 0.0;
+			}
 			if (const auto v = number("main:imaxnpcs")) {
 				settings.maxNpcs = static_cast<int>(std::lround(*v));
 			}
