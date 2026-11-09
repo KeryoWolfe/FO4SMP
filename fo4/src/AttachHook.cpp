@@ -95,9 +95,12 @@ namespace FO4SMP::AttachHook
 				g_physicsBySlot[info.formID][info.bipedIndex] = info;
 			}
 			static std::set<std::pair<std::uint32_t, std::string>> s_seenPhysics;
-			const bool interesting = (!info.physicsXml.empty() && s_seenPhysics.insert({ info.formID, info.model }).second) || info.formID == 0x14;
+			// Each actor's first attach of each physics model; with the verbose log, also every player attach and the
+			// first 60 others.
+			const bool verbose = logger::Verbose();
+			const bool interesting = (!info.physicsXml.empty() && s_seenPhysics.insert({ info.formID, info.model }).second) || (verbose && info.formID == 0x14 && !a_firstPerson);
 			static int s_others = 0;
-			if (g_logged < kMaxLogged && (interesting || s_others < 60)) {
+			if (g_logged < kMaxLogged && (interesting || (verbose && s_others < 60))) {
 				++g_logged;
 				if (!interesting) {
 					++s_others;

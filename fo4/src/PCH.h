@@ -45,16 +45,38 @@ using namespace std::literals;
 // CommonLibF4 FO4SMP used before (alandtse's); the combined CommonLibF4's own REX::INFO etc. log to the same logger.
 namespace logger
 {
+	// Release logging (milestone 6): off by default, verbose logging (MCM "Verbose Log", or bVerboseLog in
+	// MCM\Settings\FO4SMP.ini) turns on debug lines and FO4SMP's diagnostics; without it, a warning repeated word for
+	// word (the same XML problem on every NPC built from it) is logged once.
+	inline std::atomic<bool> g_verbose{ false };
+
 	namespace detail
 	{
+		inline bool FirstTime(const std::string& a_message)
+		{
+			static std::mutex lock;
+			static std::unordered_set<std::size_t> seen;
+			std::scoped_lock guard{ lock };
+			if (seen.size() > 20000) {
+				return false;
+			}
+			return seen.insert(std::hash<std::string>{}(a_message)).second;
+		}
+
 		template <class... Args>
 		void Log(spdlog::level::level_enum a_level, std::format_string<Args...> a_fmt, Args&&... a_args)
 		{
 			if (auto* log = spdlog::default_logger_raw(); log && log->should_log(a_level)) {
-				log->log(a_level, std::string_view{ std::format(a_fmt, std::forward<Args>(a_args)...) });
+				auto message = std::format(a_fmt, std::forward<Args>(a_args)...);
+				if (a_level == spdlog::level::warn && !g_verbose.load(std::memory_order_relaxed) && !FirstTime(message)) {
+					return;
+				}
+				log->log(a_level, std::string_view{ message });
 			}
 		}
 	}
+
+	inline bool Verbose() noexcept { return g_verbose.load(std::memory_order_relaxed); }
 
 	template <class... Args>
 	void trace(std::format_string<Args...> a_fmt, Args&&... a_args) { detail::Log(spdlog::level::trace, a_fmt, std::forward<Args>(a_args)...); }

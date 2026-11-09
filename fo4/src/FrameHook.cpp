@@ -31,7 +31,7 @@ namespace FO4SMP::FrameHook
 		void Report(std::chrono::steady_clock::time_point a_now)
 		{
 			const double span = std::chrono::duration<double>(a_now - g_reportStart).count();
-			if (span < kReportSeconds) {
+			if (span < (logger::Verbose() ? kReportSeconds : 6 * kReportSeconds)) {  // a minute apart unless verbose
 				return;
 			}
 			if (g_frames > 0) {

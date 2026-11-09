@@ -367,7 +367,7 @@ namespace hdt
 		}
 		FO4SMP::Validation::CheckOnce(readFrom, readFrom == path.c_str() ? std::string{ path.c_str() } : std::format("{} (override)", path.c_str()));
 		if (const int moved = BonesFirst(loaded)) {
-			logger::info("Physics XML {}: {} bone definition(s) came after other elements; read first, so shapes don't make those bones kinematic", path.c_str(), moved);
+			logger::debug("Physics XML {}: {} bone definition(s) came after other elements; read first, so shapes don't make those bones kinematic", path.c_str(), moved);
 		}
 
 		m_renameMap = std::move(renameMap);
@@ -808,7 +808,7 @@ namespace hdt
 	{
 		auto node = findObjectByName(bodyName);
 		if (node) {
-			logger::info("Found node named {}, creating bone", bodyName.c_str());
+			logger::debug("Found node named {}, creating bone", bodyName.c_str());
 			auto boneTemplate = getBoneTemplate(templateName);
 			if (readTemplate)
 				readBoneTemplate(boneTemplate);
@@ -872,7 +872,7 @@ namespace hdt
 					}
 					skinned.resolvedFromWorld += found;
 					skinned.unresolved = missing;
-					logger::info("Shape {}: {} null skin bone(s) found by their NIF names, {} not found", meshName, found, missing);
+					logger::debug("Shape {}: {} null skin bone(s) found by their NIF names, {} not found", meshName, found, missing);
 				} else {
 					logger::warn("Shape {}: {} null skin bone(s), and the NIF has {} for it", meshName, skinned.unresolved,
 						nifNames == m_nifBoneNames->end() ? std::string{ "no bone list" } : std::format("{} bones (the game has {})", nifNames->second.size(), skinned.bones.size()));
@@ -928,7 +928,7 @@ namespace hdt
 					++compared;
 				}
 				if (compared) {
-					logger::info("Shape {}: bone spheres from vertices; the skin data's centers are {:.1f} units off on average as bone space, {:.1f} as mesh space",
+					logger::debug("Shape {}: bone spheres from vertices; the skin data's centers are {:.1f} units off on average as bone space, {:.1f} as mesh space",
 						meshName, fileOffset / compared, fileOffsetSkin / compared);
 				}
 			}
@@ -948,7 +948,7 @@ namespace hdt
 					m_mesh->m_bones.push_back(hdt::make_smart(newBone));
 					indexBone(newBone);
 					bone = newBone;
-					logger::info("Created bone {} added to body {}, created without default values", boneName.c_str(), name);
+					logger::debug("Created bone {} added to body {}, created without default values", boneName.c_str(), name);
 				}
 
 				localToBody[boneIdx] = static_cast<int>(body->m_skinnedBones.size());
@@ -993,13 +993,13 @@ namespace hdt
 					}
 				}
 				if (off || empty) {
-					logger::info("Shape {}: {} vertices' weights didn't sum to 1 (worst off by {:.3f}; normalized), {} with no weight on a known bone",
+					logger::debug("Shape {}: {} vertices' weights didn't sum to 1 (worst off by {:.3f}; normalized), {} with no weight on a known bone",
 						meshName, off, worst, empty);
 				}
 			}
 
 			m_unknownSkinBones += static_cast<int>(skinned.unresolved);
-			logger::info("Shape {} for {}: {} bones ({} found through their world transform, {} unknown), {} vertices ({} precision)", meshName, name,
+			logger::debug("Shape {} for {}: {} bones ({} found through their world transform, {} unknown), {} vertices ({} precision)", meshName, name,
 				skinned.bones.size(), skinned.resolvedFromWorld, skinned.unresolved, skinned.vertices.size(), skinned.fullPrecision ? "full" : "half");
 
 			vertexOffsetMap.insert({ meshName, vertexStart });
@@ -1344,7 +1344,7 @@ namespace hdt
 			return false;
 		}
 
-		logger::info("OK: constraint between object {} <-> {}", bodyAName.c_str(), bodyBName.c_str());
+		logger::debug("OK: constraint between object {} <-> {}", bodyAName.c_str(), bodyBName.c_str());
 		return true;
 	}
 

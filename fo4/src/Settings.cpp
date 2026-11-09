@@ -70,6 +70,17 @@ namespace FO4SMP::Settings
 			if (const auto v = number("main:bcullnpcs")) {
 				settings.cullOffscreen = *v != 0.0;
 			}
+			if (const auto v = number("main:bverboselog")) {
+				const bool verbose = *v != 0.0;
+				if (verbose != logger::Verbose()) {
+					logger::g_verbose = verbose;
+					if (auto log = spdlog::default_logger()) {
+						log->set_level(verbose ? spdlog::level::debug : spdlog::level::info);
+						log->flush_on(verbose ? spdlog::level::debug : spdlog::level::info);
+					}
+					logger::info("Settings: verbose log {}", verbose ? "on (debug lines and diagnostics)" : "off");
+				}
+			}
 			if (const auto v = number("main:imaxnpcs")) {
 				settings.maxNpcs = static_cast<int>(std::lround(*v));
 			}

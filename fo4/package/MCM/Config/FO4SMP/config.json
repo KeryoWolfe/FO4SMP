@@ -61,6 +61,19 @@
       "valueOptions": {
         "sourceType": "ModSettingBool"
       }
+    },
+    {
+      "type": "section",
+      "text": "Troubleshooting"
+    },
+    {
+      "type": "switcher",
+      "id": "bVerboseLog:Main",
+      "text": "Verbose Log",
+      "help": "Writes FO4SMP's diagnostics to My Games\\Fallout4\\F4SE\\FO4SMP.log (every bone and constraint built, contact reports, repeated warnings). Turn on when reporting a problem; it makes the log much longer.",
+      "valueOptions": {
+        "sourceType": "ModSettingBool"
+      }
     }
   ]
 }

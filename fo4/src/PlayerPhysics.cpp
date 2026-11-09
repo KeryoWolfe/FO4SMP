@@ -81,7 +81,7 @@ namespace FO4SMP::PlayerPhysics
 		ActorState* g_current = nullptr;               // the actor the functions below work on
 
 		ActorState& S() { return *g_current; }
-		bool Verbose() { return g_current && g_current->isPlayer; }  // per-bone lines for the player only
+		bool Verbose() { return logger::Verbose() && g_current && g_current->isPlayer; }  // per-bone lines: the player, verbose log only
 		std::string Label() { return !g_current || g_current->isPlayer ? std::string{ "Player physics" } : std::format("NPC {:08X} physics", g_current->formID); }
 
 		std::uint32_t g_systemResets = 0;
@@ -1066,7 +1066,7 @@ namespace FO4SMP::PlayerPhysics
 					it = g_nifCache.emplace(path, std::move(info)).first;
 				}
 				if (!it->second.boneNames.empty() && std::ranges::all_of(a_shapes, [&](const std::string& s) { return it->second.boneNames.contains(s); })) {
-					logger::info("{}: using {} for bone names and the added bones' places", Label(), path);
+					logger::debug("{}: using {} for bone names and the added bones' places", Label(), path);
 					return &it->second;
 				}
 			}
@@ -1133,7 +1133,7 @@ namespace FO4SMP::PlayerPhysics
 				++placed;
 				if (Verbose()) logger::info("{}: added bone '{}' placed under '{}' as in the NIF (moved {:.1f} units)", Label(), node->name.c_str(), nif.parent, std::sqrt(dx * dx + dy * dy + dz * dz));
 			}
-			logger::info("{}: {} added bone(s) placed from the NIF", Label(), placed);
+			logger::debug("{}: {} added bone(s) placed from the NIF", Label(), placed);
 		}
 
 		struct Candidate
@@ -1922,8 +1922,10 @@ namespace FO4SMP::PlayerPhysics
 				}
 				ApplyFollow();  // every frame, before the physics reads the skeleton
 				if (S().isPlayer) {
-					TrackMotion(a_root, a_now);
-					WatchVisibility(a_root, a_now);
+					if (logger::Verbose()) {  // diagnostics (runs 33-37)
+						TrackMotion(a_root, a_now);
+						WatchVisibility(a_root, a_now);
+					}
 				} else {
 					// Culling: out of view for a second, the NPC's systems leave the world (kept built); back in view,
 					// they return and start again from the current pose (FSMP's re-initialisation on AddSystem).
@@ -1971,7 +1973,7 @@ namespace FO4SMP::PlayerPhysics
 				return;
 			}
 
-			if (S().isPlayer) {
+			if (S().isPlayer && logger::Verbose()) {
 				static int dumps = 0;
 				static auto nextDump = a_now;
 				if (dumps < 12 && a_now >= nextDump) {
