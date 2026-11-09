@@ -75,6 +75,10 @@ add_library(
 	src/Console.h
 	src/FrameHook.cpp
 	src/FrameHook.h
+	src/Papyrus.cpp
+	src/Papyrus.h
+	src/Settings.cpp
+	src/Settings.h
 	src/Offsets.h
 	src/PCH.h
 	src/PhysicsWorld.cpp
@@ -90,6 +94,7 @@ add_library(
 	src/game/Fo4NiUtils.h
 	src/game/Fo4Nodes.cpp
 	src/game/Fo4Nodes.h
+	src/game/Fo4Resource.cpp
 	src/game/Fo4Settings.cpp
 	src/game/Fo4Settings.h
 	src/game/Fo4Skin.cpp

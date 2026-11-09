@@ -4,6 +4,7 @@
 #include "Offsets.h"
 #include "PhysicsWorld.h"
 #include "PlayerPhysics.h"
+#include "Settings.h"
 #include "hdtDefaultBBPList.h"
 
 namespace FO4SMP::FrameHook
@@ -79,6 +80,7 @@ namespace FO4SMP::FrameHook
 		void Step(void* a_main)
 		{
 			const auto now = std::chrono::steady_clock::now();
+			Settings::Poll();  // MCM changes are made while paused
 			if (Paused(a_main)) {
 				g_lastFrame = now;  // no time passes for the physics while paused
 				return;
@@ -93,6 +95,8 @@ namespace FO4SMP::FrameHook
 			const float frameSeconds = std::min(std::chrono::duration<float>(now - g_lastFrame).count(), kMaxFrameSeconds);
 			g_lastFrame = now;
 
+			// The frame's work and the step under PlayerPhysics' lock, against DynamicHDT script calls.
+			std::scoped_lock guard{ PlayerPhysics::Lock() };
 			PlayerPhysics::Update(g_defaults);
 
 			// Diagnostic switch: with F4SE\Plugins\FO4SMP\freeze.txt present, the physics is built but not

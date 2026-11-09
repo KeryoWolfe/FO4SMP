@@ -78,6 +78,15 @@ namespace FO4SMP::Offsets
 	// generator names each head part's shape after.
 	inline constexpr REL::ID DataHandler_Singleton{ 4796135 };
 
+	// Milestone 5, files in BA2 archives. F4SE 1.11.240 GameStreams.h: BSResourceNiBinaryStream (0x30 bytes)
+	// Construct(path, 0, 0, 0) 0x016B9C40 = ID 2269830, its destructor 0x016B9F30 = ID 2269832, IsValid 0x016BA070 =
+	// ID 2269833, Read(buffer, length) 0x016BA230 = ID 2269839 (returns the bytes read). Checked in the executable:
+	// the constructor and destructor both store the BSResourceNiBinaryStream vtable; Read adds the count to +0x20.
+	inline constexpr REL::ID ResourceStreamCtor{ 2269830 };
+	inline constexpr REL::ID ResourceStreamDtor{ 2269832 };
+	inline constexpr REL::ID ResourceStreamIsValid{ 2269833 };
+	inline constexpr REL::ID ResourceStreamRead{ 2269839 };
+
 	// Armor attach (milestone 4). BipedAnim::ApplySkinnedObjects calls BipedAnim::AttachSkinnedObject from two
 	// places (1.11.240: +0x35DDB2 and +0x35DDDB, inside a chained chunk of the function); both are `call rel32`.
 	// FO4SMP hooks those calls, not the function: LooksMenu (f4ee.dll) detours the function itself, and a call
@@ -125,6 +134,9 @@ namespace FO4SMP::Offsets
 		Function{ "LookupREFRByHandle"sv, 2190940, 0, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C }, true },
 		Function{ "HeapAllocate"sv, 2267872, 0, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C }, true },
 		Function{ "NiNodeCtor"sv, 2269948, 0, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74 }, true },
+		Function{ "ResourceStreamCtor"sv, 2269830, 0, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C }, true },
+		Function{ "ResourceStreamDtor"sv, 2269832, 0, { 0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B }, true },
+		Function{ "ResourceStreamRead"sv, 2269839, 0, { 0x40, 0x53, 0x48, 0x83, 0xEC, 0x30, 0x33, 0xC0 }, true },
 		Function{ "LooksMenuUtilsShowLooksMenu"sv, 2223366, 411372, { 0x48, 0x89, 0x5C, 0x24, 0x18, 0x57, 0x48, 0x83 }, true },
 		Function{ "MainOnIdle"sv, 2228917, 633524, { 0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x08, 0x48 }, true },
 		Function{ "Reset3D"sv, 2229913, 302888, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C }, true },

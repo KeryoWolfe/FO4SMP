@@ -29,4 +29,44 @@ namespace FO4SMP::PlayerPhysics
 
 	// One line for the console: what's simulated on the player.
 	[[nodiscard]] std::string Status();
+
+	// Held by the frame hook around Update and the physics step; the functions below take it too.
+	std::recursive_mutex& Lock();
+
+	// Milestone 5: DynamicHDT (Papyrus.cpp). Thread-safe (they take the same lock as Update). Paths are as NIFs
+	// name them (Meshes\...\x.xml); compared without case.
+	[[nodiscard]] bool HasPhysics(std::uint32_t a_formID);    // the actor has at least one physics system
+	[[nodiscard]] bool IsPlacedOnly(std::uint32_t a_formID);  // selected, but only placed (not simulated)
+	// Each bone named, in every system of the actor: dynamic (a_on) or kinematic. Returns each name's previous
+	// state (true = was dynamic; false = kinematic or not found).
+	std::vector<bool> ToggleBones(std::uint32_t a_formID, const std::vector<std::string>& a_names, bool a_on);
+	// Full: the actor's physics is rebuilt from the rest pose. Soft: motion cleared, pose kept. False if none.
+	bool Reset(std::uint32_t a_formID, bool a_full);
+	// The physics XML an attached model (ArmorAddon model paths, relative to Meshes\) names: as attached, and
+	// with this actor's override applied. "" if no such attach has physics.
+	[[nodiscard]] std::string AttachedPhysicsFile(std::uint32_t a_formID, const std::vector<std::string>& a_models);
+	[[nodiscard]] std::string CurrentPhysicsFile(std::uint32_t a_formID, const std::vector<std::string>& a_models);
+	// Use a_new where this actor's NIFs name a_original (a_new == a_original removes it); the actor is rebuilt.
+	bool SetPhysicsFile(std::uint32_t a_formID, const std::string& a_original, const std::string& a_new, bool a_persist);
+	[[nodiscard]] std::string OriginalPhysicsFile(std::uint32_t a_formID, const std::string& a_current);
+	[[nodiscard]] bool UsesPhysicsFile(std::uint32_t a_formID, const std::string& a_path);
+
+	struct PersistedOverride
+	{
+		std::uint32_t formID = 0;
+		std::string original;
+		std::string path;
+	};
+	[[nodiscard]] std::vector<PersistedOverride> PersistedOverrides();
+	void RestoreOverrides(const std::vector<PersistedOverride>& a_overrides);  // replaces all (save loaded)
+
+	// Milestone 5: MCM settings; only the values present are applied.
+	struct Settings
+	{
+		std::optional<bool> npcPhysics;
+		std::optional<bool> facePhysics;
+		std::optional<int> maxNpcs;
+		std::optional<float> npcDistance;
+	};
+	void ApplySettings(const Settings& a_settings);
 }

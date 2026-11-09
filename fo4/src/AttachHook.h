@@ -46,6 +46,10 @@ namespace FO4SMP::AttachHook
 	};
 	std::vector<PhysicsActor> PhysicsActors();
 
+	// Milestone 5: every other actor seen with a third-person attach (no physics in its outfit), generation 0: its
+	// face may still have physics (SMP hair). Thread-safe.
+	std::vector<PhysicsActor> OtherActors();
+
 	// Resolves an ObjectRefHandle to the actor's loaded 3D root (TESObjectREFR::loadedData->data3D); nullptr
 	// if the handle is stale or nothing is loaded. Main thread.
 	RE::NiAVObject* Loaded3D(std::uint32_t a_handle);

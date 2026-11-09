@@ -153,17 +153,26 @@ namespace hdt::fo4
 		return {};
 	}
 
-	// Reads a file the game would see, relative to Data (MO2's virtual folder included).
-	// Loose files only for now: a file packed in a BA2 isn't found (the game's resource streams come later).
+	// A file through the game's resource system (BSResourceNiBinaryStream: loose files and BA2 archives), relative to
+	// Data; "" if not found or the game can't be asked yet (Fo4Resource.cpp).
+	std::string ReadGameFile(const char* a_path);
+	void EnableGameFiles();  // called once game data is ready
+
+	// Reads a file the game would see, relative to Data (MO2's virtual folder included): a loose file first, then
+	// the game's archives (milestone 5: SMP hair packed in BA2s).
 	inline std::string readAllFile(const char* a_path)
 	{
 		std::filesystem::path path{ a_path };
-		if (path.is_relative()) {
+		const bool relative = path.is_relative();
+		if (relative) {
 			path = std::filesystem::path{ "Data" } / path;
 		}
 		std::ifstream stream(path, std::ios::binary);
 		if (!stream) {
-			return {};
+			// FO4SMP's own files (F4SE\Plugins\FO4SMP\overrides...) are loose only.
+			const std::string_view sv{ a_path };
+			const bool own = sv.size() >= 4 && _strnicmp(a_path, "F4SE", 4) == 0;
+			return relative && !own ? ReadGameFile(a_path) : std::string{};
 		}
 		std::ostringstream buffer;
 		buffer << stream.rdbuf();

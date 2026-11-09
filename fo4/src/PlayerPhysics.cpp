@@ -88,6 +88,35 @@ namespace FO4SMP::PlayerPhysics
 		std::unordered_map<std::uint32_t, std::chrono::steady_clock::time_point> g_noCollision;  // until
 		std::unordered_set<std::uint32_t> g_unsimulatable;  // NPCs whose skeleton lacks the body's bones (armor racks): placed only
 
+		// Milestone 5: DynamicHDT's physics file overrides, per actor: the lower-case path a NIF names -> the path to use.
+		struct Override
+		{
+			std::string path;
+			bool persist = false;  // kept in the save (F4SE co-save)
+		};
+		std::map<std::uint32_t, std::map<std::string, Override>> g_overrides;
+
+		std::string LowerPath(std::string a_s)
+		{
+			std::ranges::transform(a_s, a_s.begin(), [](unsigned char c) { return c == '/' ? '\\' : static_cast<char>(std::tolower(c)); });
+			return a_s;
+		}
+
+		std::string PhysicsFileFor(std::uint32_t a_formID, const std::string& a_file)
+		{
+			if (const auto actor = g_overrides.find(a_formID); actor != g_overrides.end()) {
+				if (const auto it = actor->second.find(LowerPath(a_file)); it != actor->second.end()) {
+					return it->second.path;
+				}
+			}
+			return a_file;
+		}
+
+		// Milestone 5: settings (MCM).
+		bool g_npcPhysics = true;
+		bool g_facePhysics = true;
+		float g_npcDistance = 2000.0f;
+
 
 		// Fallout 4: the skins of shapes the game doesn't draw (A-Body's Virtual* collision shapes) start with
 		// null bone entries (run 20: VirtualHands 36 of 38, VirtualArms 18 of 28) and appear to get them
@@ -429,6 +458,53 @@ namespace FO4SMP::PlayerPhysics
 				logger::info("{}: {} face skin entr(ies) rebound to the skeleton instead (no head part NIF; no physics for them)", Label(), rebound);
 			}
 			return newParts;
+		}
+
+		// Milestone 5: whether an actor's face has a head part with physics (SMP hair), for actors whose outfit has
+		// none. Per head part model, read once; per actor, once per 3D.
+		std::unordered_map<std::string, bool> g_headPartPhysics;  // model path -> its NIF names a physics XML
+		std::unordered_map<std::uint32_t, std::pair<RE::NiAVObject*, bool>> g_faceProbe;  // form ID -> (3D, result)
+
+		bool FaceHasPhysics(std::uint32_t a_formID, RE::NiAVObject* a_root)
+		{
+			if (const auto it = g_faceProbe.find(a_formID); it != g_faceProbe.end() && it->second.first == a_root) {
+				return it->second.second;
+			}
+			bool found = false;
+			std::string part;
+			std::function<void(RE::NiAVObject*, int, bool)> walk = [&](RE::NiAVObject* a_o, int a_depth, bool a_inFace) {
+				if (!a_o || a_depth > 40 || found) {
+					return;
+				}
+				const bool face = a_inFace || hdt::fo4::IsKindOf(a_o, ".?AVBSFaceGenNiNode@@"sv);
+				if (face && hdt::castBSTriShape(a_o)) {
+					if (const auto* model = HeadPartModel(a_o->name.c_str())) {
+						auto [it, added] = g_headPartPhysics.try_emplace(*model, false);
+						if (added) {
+							const auto data = hdt::fo4::readAllFile((std::filesystem::path{ "Meshes" } / *model).string().c_str());
+							it->second = !data.empty() && !hdt::fo4::ReadNifStringExtraData(data, kPhysicsExtraData).empty();
+						}
+						if (it->second) {
+							found = true;
+							part = a_o->name.c_str();
+						}
+					}
+				}
+				if (auto* n = hdt::castNiNode(a_o)) {
+					for (auto& child : hdt::fo4::Children(n)) {
+						walk(child.get(), a_depth + 1, face);
+					}
+				}
+			};
+			walk(a_root, 0, false);
+			if (g_faceProbe.size() > 4096) {
+				g_faceProbe.clear();
+			}
+			g_faceProbe[a_formID] = { a_root, found };
+			if (found) {
+				logger::info("NPC {:08X} physics: no physics outfit, but face part '{}' has physics", a_formID, part);
+			}
+			return found;
 		}
 
 		// Each frame, before the physics reads the skeleton: the actor's own face nodes follow their parents, except
@@ -1230,7 +1306,11 @@ namespace FO4SMP::PlayerPhysics
 					FixAddedBones(skeleton, c.model);
 				}
 
-				hdt::DefaultBBP::PhysicsFile_t file{ c.file, {} };
+				const std::string physicsPath = PhysicsFileFor(S().formID, c.file);
+				if (physicsPath != c.file) {
+					logger::info("{}: {} replaced by {} (DynamicHDT)", Label(), c.file, physicsPath);
+				}
+				hdt::DefaultBBP::PhysicsFile_t file{ physicsPath, {} };
 				hdt::Fo4SystemCreator creator;
 				creator.m_nifBoneNames = nif ? &nif->boneNames : nullptr;
 				const auto start = std::chrono::steady_clock::now();
@@ -1292,7 +1372,7 @@ namespace FO4SMP::PlayerPhysics
 				LogCollisionFilter(system.get());
 				BuildFollow(skeleton, system.get());
 				PhysicsWorld::Get()->AddSystem(system.get());
-				S().built.push_back({ system, RE::NiPointer<RE::NiAVObject>(c.model), c.file });
+				S().built.push_back({ system, RE::NiPointer<RE::NiAVObject>(c.model), physicsPath });
 			}
 		}
 	}
@@ -1311,11 +1391,14 @@ namespace FO4SMP::PlayerPhysics
 			}
 			auto& face = it->second;
 			face.systemsBuilt = true;
+			if (!g_facePhysics) {
+				return;
+			}
 			for (const auto& part : face.parts) {
 				if (part.xml.empty() || !part.shape->parent) {
 					continue;
 				}
-				const std::string& file = part.xml;  // as written in the NIF (Meshes\...), like an outfit's
+				const std::string file = PhysicsFileFor(S().formID, part.xml);  // as written in the NIF (Meshes\...), like an outfit's
 				hdt::DefaultBBP::PhysicsFile_t physics{ file, {} };
 				for (const auto& nifShape : part.nifShapes) {
 					physics.second[nifShape].insert(part.shape->name.c_str());
@@ -1385,7 +1468,7 @@ namespace FO4SMP::PlayerPhysics
 		}
 
 		int g_maxActive = 5;                       // smp.maximumActiveSkeletons: the player and up to this many minus one NPCs
-		constexpr float kNpcMaxDistance = 2000.0f;  // game units (about 28 m); NPCs farther away aren't simulated
+
 		constexpr double kSelectSeconds = 1.0;      // how often the simulated NPCs are chosen again
 		constexpr float kNpcKeepBonus = 500.0f;     // selection hysteresis, game units
 		constexpr float kPlaceDistance = 8000.0f;   // NPCs not simulated but this near get their added bones placed
@@ -1785,7 +1868,7 @@ namespace FO4SMP::PlayerPhysics
 		}
 
 		// Milestone 4: which NPCs are simulated: those the attach hook saw with physics, with 3D loaded, within
-		// kNpcMaxDistance of the player, nearest first, up to g_maxActive - 1. The rest are dropped.
+		// g_npcDistance of the player, nearest first, up to g_maxActive - 1. The rest are dropped.
 		void SelectNpcs(RE::NiAVObject* a_playerRoot, const std::vector<AttachHook::PhysicsActor>& a_actors, std::chrono::steady_clock::time_point a_now)
 		{
 			std::erase_if(g_quarantined, [&](const auto& e) { return a_now >= e.second; });
@@ -1817,11 +1900,11 @@ namespace FO4SMP::PlayerPhysics
 						logger::info("NPC {:08X} physics: seen with a physics attach, 3D '{}' ({}) {:.0f} units from the player", a.formID, root->name.c_str(), hdt::fo4::ClassName(root), d);
 					}
 					// Hysteresis: an NPC already simulated keeps its place until it is kNpcKeepBonus farther than
-					// a newcomer, and up to kNpcMaxDistance + kNpcKeepBonus away (run 32: 303 drops and rebuilds as
+					// a newcomer, and up to g_npcDistance + kNpcKeepBonus away (run 32: 303 drops and rebuilds as
 					// NPCs crossed the 2,000-unit line or swapped places in the nearest four).
 					const auto it = g_actors.find(a.formID);
 					const bool active = it != g_actors.end() && it->second.simulate;
-					if (!g_quarantined.contains(a.formID) && !g_unsimulatable.contains(a.formID) && g_maxActive > 1 && d <= kNpcMaxDistance + (active ? kNpcKeepBonus : 0.0f)) {
+					if (g_npcPhysics && !g_quarantined.contains(a.formID) && !g_unsimulatable.contains(a.formID) && g_maxActive > 1 && d <= g_npcDistance + (active ? kNpcKeepBonus : 0.0f)) {
 						simulate.push_back({ active ? std::max(0.0f, d - kNpcKeepBonus) : d, d, &a });
 					} else if (d <= kPlaceDistance) {
 						place.push_back({ d, d, &a });
@@ -1886,18 +1969,29 @@ namespace FO4SMP::PlayerPhysics
 	void SetMaxActive(int a_maxActive)
 	{
 		g_maxActive = std::max(1, a_maxActive);
-		logger::info("Actor physics: the player and up to {} NPC(s) within {:.0f} units are simulated", g_maxActive - 1, kNpcMaxDistance);
+		logger::info("Actor physics: the player and up to {} NPC(s) within {:.0f} units are simulated", g_maxActive - 1, g_npcDistance);
+	}
+
+	namespace
+	{
+		std::recursive_mutex g_lock;  // DynamicHDT script calls against the frame's work and step
+	}
+
+	std::recursive_mutex& Lock()
+	{
+		return g_lock;
 	}
 
 	void Update(const hdt::DefaultBBPList& a_defaults)
 	{
+		std::scoped_lock guard{ g_lock };
 		const auto now = std::chrono::steady_clock::now();
 
 		auto& player = g_actors[0x14];
 		player.formID = 0x14;
 		player.isPlayer = true;
 
-		const auto actors = AttachHook::PhysicsActors();
+		auto actors = AttachHook::PhysicsActors();
 		auto generationOf = [&](std::uint32_t a_formID) {
 			for (const auto& a : actors) {
 				if (a.formID == a_formID) {
@@ -1910,6 +2004,24 @@ namespace FO4SMP::PlayerPhysics
 		auto* playerRoot = PlayerRoot();
 		static auto nextSelect = now;
 		if (now >= nextSelect) {
+			// Milestone 5: NPCs without a physics outfit whose face has physics (SMP hair), within reach.
+			if (playerRoot) {
+				const auto& p = playerRoot->world.translate;
+				for (const auto& other : AttachHook::OtherActors()) {
+					if (other.formID == 0x14) {
+						continue;
+					}
+					auto* root = AttachHook::Loaded3D(other.handle);
+					if (!root) {
+						continue;
+					}
+					const auto& q = root->world.translate;
+					const float d = std::sqrt((p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) + (p.z - q.z) * (p.z - q.z));
+					if (d <= g_npcDistance + kNpcKeepBonus && FaceHasPhysics(other.formID, root)) {
+						actors.push_back(other);
+					}
+				}
+			}
 			SelectNpcs(playerRoot, actors, now);
 			nextSelect = now + Seconds(kSelectSeconds);
 		}
@@ -1951,5 +2063,225 @@ namespace FO4SMP::PlayerPhysics
 			}
 		}
 		return std::format("{}; {} NPC(s) simulated", out.empty() ? "no physics on the player yet" : out, npcs);
+	}
+	// --- Milestone 5: DynamicHDT (Papyrus.cpp) and settings ---
+
+	namespace
+	{
+		ActorState* Find(std::uint32_t a_formID)
+		{
+			const auto it = g_actors.find(a_formID);
+			return it == g_actors.end() ? nullptr : &it->second;
+		}
+
+		bool SamePath(const std::string& a, const std::string& b)
+		{
+			return LowerPath(a) == LowerPath(b);
+		}
+
+		// Rebuilds the actor's physics on its next frame (keeps the actor selected).
+		void Rebuild(ActorState& a_state, std::string_view a_why)
+		{
+			g_current = &a_state;
+			Drop(a_why);
+			a_state.nextCheck = std::chrono::steady_clock::now();
+			a_state.root = nullptr;  // as a new 3D: rescan, face systems again
+			a_state.headCheckedRoot = nullptr;
+		}
+	}
+
+	bool HasPhysics(std::uint32_t a_formID)
+	{
+		std::scoped_lock guard{ g_lock };
+		const auto* state = Find(a_formID);
+		return state && !state->built.empty();
+	}
+
+	bool IsPlacedOnly(std::uint32_t a_formID)
+	{
+		std::scoped_lock guard{ g_lock };
+		const auto* state = Find(a_formID);
+		return state && !state->simulate;
+	}
+
+	std::vector<bool> ToggleBones(std::uint32_t a_formID, const std::vector<std::string>& a_names, bool a_on)
+	{
+		std::scoped_lock guard{ g_lock };
+		std::vector<bool> previous(a_names.size(), false);
+		auto* state = Find(a_formID);
+		if (!state) {
+			return previous;
+		}
+		auto* world = PhysicsWorld::Get();
+		for (std::size_t i = 0; i < a_names.size(); ++i) {
+			const RE::BSFixedString name{ a_names[i].c_str() };
+			bool found = false;
+			for (auto& b : state->built) {
+				auto* bone = b.system->findBone(name);
+				if (!bone) {
+					continue;
+				}
+				const bool dynamic = !bone->m_rig.isStaticOrKinematicObject();
+				if (!std::exchange(found, true)) {
+					previous[i] = dynamic;
+				}
+				// As FSMP: nothing to do, or a massless bone can't be made dynamic.
+				if (dynamic == a_on || (a_on && bone->m_rig.getInvMass() <= 0.0f)) {
+					continue;
+				}
+				const auto flags = bone->m_rig.getCollisionFlags();
+				bone->m_rig.setCollisionFlags(a_on ? (flags & ~btCollisionObject::CF_KINEMATIC_OBJECT) : (flags | btCollisionObject::CF_KINEMATIC_OBJECT));
+				static const btVector3 zero(0, 0, 0);
+				bone->m_rig.clearForces();
+				bone->m_rig.setLinearVelocity(zero);
+				bone->m_rig.setAngularVelocity(zero);
+				bone->m_rig.setInterpolationLinearVelocity(zero);
+				bone->m_rig.setInterpolationAngularVelocity(zero);
+				world->updateConstraintsForBone(bone);
+			}
+		}
+		return previous;
+	}
+
+	bool Reset(std::uint32_t a_formID, bool a_full)
+	{
+		std::scoped_lock guard{ g_lock };
+		auto* state = Find(a_formID);
+		if (!state || state->built.empty()) {
+			return false;
+		}
+		if (a_full) {
+			Rebuild(*state, "DynamicHDT ResetPhysics (full)");
+			return true;
+		}
+		// Soft: the bones keep their pose; their motion is cleared.
+		static const btVector3 zero(0, 0, 0);
+		for (auto& b : state->built) {
+			for (auto& bone : b.system->getBones()) {
+				bone->m_rig.clearForces();
+				bone->m_rig.setLinearVelocity(zero);
+				bone->m_rig.setAngularVelocity(zero);
+			}
+		}
+		logger::info("{}: DynamicHDT ResetPhysics (soft): motion cleared", a_formID == 0x14 ? std::string{ "Player physics" } : std::format("NPC {:08X} physics", a_formID));
+		return true;
+	}
+
+	std::string AttachedPhysicsFile(std::uint32_t a_formID, const std::vector<std::string>& a_models)
+	{
+		for (const auto& a : AttachHook::PhysicsAttachesOf(a_formID)) {
+			for (const auto& model : a_models) {
+				if (!model.empty() && SamePath(a.model, model)) {
+					return a.physicsXml;
+				}
+			}
+		}
+		return {};
+	}
+
+	std::string CurrentPhysicsFile(std::uint32_t a_formID, const std::vector<std::string>& a_models)
+	{
+		std::scoped_lock guard{ g_lock };
+		const auto original = AttachedPhysicsFile(a_formID, a_models);
+		return original.empty() ? original : PhysicsFileFor(a_formID, original);
+	}
+
+	bool SetPhysicsFile(std::uint32_t a_formID, const std::string& a_original, const std::string& a_new, bool a_persist)
+	{
+		std::scoped_lock guard{ g_lock };
+		if (a_original.empty() || a_new.empty()) {
+			return false;
+		}
+		const std::string label = a_formID == 0x14 ? std::string{ "Player physics" } : std::format("NPC {:08X} physics", a_formID);
+		auto& overrides = g_overrides[a_formID];
+		if (SamePath(a_original, a_new)) {
+			overrides.erase(LowerPath(a_original));
+			logger::info("{}: DynamicHDT: {} back to itself", label, a_original);
+		} else {
+			overrides[LowerPath(a_original)] = { a_new, a_persist };
+			logger::info("{}: DynamicHDT: {} -> {}{}", label, a_original, a_new, a_persist ? " (kept in the save)" : "");
+		}
+		if (auto* state = Find(a_formID)) {
+			Rebuild(*state, "DynamicHDT changed a physics file");
+		}
+		return true;
+	}
+
+	// The original (NIF) path that a_current replaces on this actor, or a_current itself.
+	std::string OriginalPhysicsFile(std::uint32_t a_formID, const std::string& a_current)
+	{
+		std::scoped_lock guard{ g_lock };
+		if (const auto actor = g_overrides.find(a_formID); actor != g_overrides.end()) {
+			for (const auto& [original, o] : actor->second) {
+				if (SamePath(o.path, a_current)) {
+					return original;
+				}
+			}
+		}
+		return a_current;
+	}
+
+	bool UsesPhysicsFile(std::uint32_t a_formID, const std::string& a_path)
+	{
+		std::scoped_lock guard{ g_lock };
+		const auto* state = Find(a_formID);
+		if (state && std::ranges::any_of(state->built, [&](const Built& b) { return SamePath(b.file, a_path); })) {
+			return true;
+		}
+		return std::ranges::any_of(AttachHook::PhysicsAttachesOf(a_formID), [&](const AttachHook::Attach& a) { return SamePath(PhysicsFileFor(a_formID, a.physicsXml), a_path); });
+	}
+
+	std::vector<PersistedOverride> PersistedOverrides()
+	{
+		std::scoped_lock guard{ g_lock };
+		std::vector<PersistedOverride> out;
+		for (const auto& [formID, overrides] : g_overrides) {
+			for (const auto& [original, o] : overrides) {
+				if (o.persist) {
+					out.push_back({ formID, original, o.path });
+				}
+			}
+		}
+		return out;
+	}
+
+	void RestoreOverrides(const std::vector<PersistedOverride>& a_overrides)
+	{
+		std::scoped_lock guard{ g_lock };
+		g_overrides.clear();
+		for (const auto& o : a_overrides) {
+			g_overrides[o.formID][LowerPath(o.original)] = { o.path, true };
+		}
+		for (auto& [id, state] : g_actors) {
+			if (g_overrides.contains(id) && !state.built.empty()) {
+				Rebuild(state, "physics file overrides loaded from the save");
+			}
+		}
+		if (!a_overrides.empty()) {
+			logger::info("DynamicHDT: {} physics file override(s) loaded from the save", a_overrides.size());
+		}
+	}
+
+	void ApplySettings(const Settings& a_settings)
+	{
+		std::scoped_lock guard{ g_lock };
+		const bool faceChanged = a_settings.facePhysics && *a_settings.facePhysics != g_facePhysics;
+		g_npcPhysics = a_settings.npcPhysics.value_or(g_npcPhysics);
+		g_facePhysics = a_settings.facePhysics.value_or(g_facePhysics);
+		if (a_settings.npcDistance) {
+			g_npcDistance = std::clamp(*a_settings.npcDistance, 200.0f, 8000.0f);
+		}
+		if (a_settings.maxNpcs) {
+			g_maxActive = std::max(1, *a_settings.maxNpcs + 1);
+		}
+		logger::info("Settings: NPC physics {}, face and hair physics {}, up to {} NPC(s) within {:.0f} units", g_npcPhysics ? "on" : "off", g_facePhysics ? "on" : "off",
+			g_maxActive - 1, g_npcDistance);
+		if (faceChanged) {
+			for (auto& [id, state] : g_actors) {
+				if (!state.built.empty()) {
+					Rebuild(state, g_facePhysics ? "face and hair physics turned on" : "face and hair physics turned off");
+				}
+			}
+		}
 	}
 }

@@ -13,6 +13,7 @@ namespace FO4SMP::AttachHook
 		Attach_t* g_original2 = nullptr;
 		bool      g_installed = false;
 		std::unordered_map<std::uint32_t, PhysicsActor> g_actors;  // under g_lock
+		std::unordered_map<std::uint32_t, std::uint32_t> g_seen;    // every actor with a third-person attach: form ID -> handle; under g_lock
 		// The latest third-person physics attach per actor and biped slot, kept for good (g_recent is bounded, and
 		// with 40 settlers around, Cait's body attach had dropped out of it by the time she was rebuilt indoors, run 34).
 		std::unordered_map<std::uint32_t, std::map<std::uint32_t, Attach>> g_physicsBySlot;  // under g_lock
@@ -83,6 +84,9 @@ namespace FO4SMP::AttachHook
 			info.attached = RE::NiPointer<RE::NiAVObject>(result);
 
 			std::scoped_lock guard{ g_lock };
+			if (info.formID && info.handle && !a_firstPerson && result && (g_seen.size() < 8192 || g_seen.contains(info.formID))) {
+				g_seen[info.formID] = info.handle;
+			}
 			if (info.formID && info.handle && !a_firstPerson && !info.physicsXml.empty() && result) {
 				auto& actor = g_actors[info.formID];
 				actor.formID = info.formID;
@@ -186,6 +190,18 @@ namespace FO4SMP::AttachHook
 		out.reserve(g_actors.size());
 		for (const auto& [id, actor] : g_actors) {
 			out.push_back(actor);
+		}
+		return out;
+	}
+
+	std::vector<PhysicsActor> OtherActors()
+	{
+		std::scoped_lock guard{ g_lock };
+		std::vector<PhysicsActor> out;
+		for (const auto& [id, handle] : g_seen) {
+			if (!g_actors.contains(id)) {
+				out.push_back({ id, handle, 0 });
+			}
 		}
 		return out;
 	}

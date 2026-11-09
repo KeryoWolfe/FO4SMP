@@ -7,9 +7,11 @@
 // physics world every frame and logs its timing. Nothing is attached to actors yet.
 
 #include "AddressCheck.h"
+#include "game/Fo4NiUtils.h"
 #include "AttachHook.h"
 #include "Config.h"
 #include "Console.h"
+#include "Papyrus.h"
 #include "FrameHook.h"
 #include "PhysicsWorld.h"
 #include "PlayerPhysics.h"
@@ -110,6 +112,9 @@ namespace
 			break;
 		case F4SE::MessagingInterface::kGameDataReady:
 			logger::info("Game data ready");
+			if (g_addresses.Passed()) {
+				hdt::fo4::EnableGameFiles();  // NIFs and XMLs in BA2 archives from now on
+			}
 			StartPhysics();
 			break;
 		case F4SE::MessagingInterface::kPostLoadGame:
@@ -151,6 +156,7 @@ F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 		logger::info("Address check passed");
 		FO4SMP::FrameHook::Install();
 		FO4SMP::AttachHook::Install();
+		FO4SMP::Papyrus::Install();
 	} else {
 		logger::error("Address check failed; no hooks installed on this runtime.");
 	}
