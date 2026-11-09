@@ -210,7 +210,9 @@ namespace FO4SMP::PlayerPhysics
 		// NIF's "HDT Skinned Mesh Physics Object" names the physics XML (face generation drops it from the shape).
 		struct FacePart
 		{
-			RE::BSTriShape* shape = nullptr;
+			// Held: the game frees a head part's shape when the face is regenerated (LooksMenu, barber), and a build
+			// must never read a freed one (run 50: a crash in BuildFaceSystems after a LooksMenu hair change).
+			RE::NiPointer<RE::BSTriShape> shape;
 			std::string nif;
 			std::string xml;
 			std::vector<std::string> nifShapes;  // the NIF's skinned shape names (the XML's shape names)
@@ -328,7 +330,7 @@ namespace FO4SMP::PlayerPhysics
 			// without being looked at; one already pointed at this actor's nodes keeps its part.
 			std::unordered_map<RE::BSTriShape*, FacePart> known;
 			for (auto& part : face.parts) {
-				known.emplace(part.shape, std::move(part));
+				known.emplace(part.shape.get(), std::move(part));
 			}
 			face.parts.clear();
 			int newParts = 0, pointed = 0, rebound = 0;
@@ -420,7 +422,7 @@ namespace FO4SMP::PlayerPhysics
 									}
 								}
 								const auto xml = hdt::fo4::ReadNifStringExtraData(data, kPhysicsExtraData);
-								FacePart part{ tri, nifPath, xml, {} };
+								FacePart part{ RE::NiPointer<RE::BSTriShape>(tri), nifPath, xml, {} };
 								for (const auto& [shapeName, bones] : nifShapes) {
 									part.nifShapes.push_back(shapeName);
 								}
@@ -1397,13 +1399,17 @@ namespace FO4SMP::PlayerPhysics
 			if (!skeleton || it == g_faces.end() || it->second.root != a_root || it->second.systemsBuilt) {
 				return;
 			}
-			auto& face = it->second;
+			// The face may have been regenerated since the last look (LooksMenu, barber: the old head part shapes are
+			// detached and new ones made); look again so only shapes still on this skeleton are built. (BuildFace may
+			// add to g_faces, so the entry is looked up again after it.)
+			BuildFace(a_root);
+			auto& face = g_faces[S().formID];
 			face.systemsBuilt = true;
 			if (!g_facePhysics) {
 				return;
 			}
 			for (const auto& part : face.parts) {
-				if (part.xml.empty() || !part.shape->parent) {
+				if (part.xml.empty() || !part.shape || !part.shape->parent || !IsAttachedUnder(part.shape.get(), a_root)) {
 					continue;
 				}
 				const std::string file = PhysicsFileFor(S().formID, part.xml);  // as written in the NIF (Meshes\...), like an outfit's
@@ -1443,7 +1449,7 @@ namespace FO4SMP::PlayerPhysics
 				LogCollisionFilter(system.get());
 				PhysicsWorld::Get()->AddSystem(system.get());
 				// The shape as the model: when the part goes (another hairstyle), the system is dropped.
-				S().built.push_back({ system, RE::NiPointer<RE::NiAVObject>(part.shape), file });
+				S().built.push_back({ system, RE::NiPointer<RE::NiAVObject>(part.shape.get()), file });
 			}
 		}
 
@@ -2398,8 +2404,8 @@ namespace FO4SMP::PlayerPhysics
 		if (a_settings.maxNpcs) {
 			g_maxActive = std::max(1, *a_settings.maxNpcs + 1);
 		}
-		logger::info("Settings: NPC physics {}, face and hair physics {}, up to {} NPC(s) within {:.0f} units", g_npcPhysics ? "on" : "off", g_facePhysics ? "on" : "off",
-			g_maxActive - 1, g_npcDistance);
+		logger::info("Settings: NPC physics {}, face and hair physics {}, up to {} NPC(s) within {:.0f} units, off-screen NPCs {}", g_npcPhysics ? "on" : "off",
+			g_facePhysics ? "on" : "off", g_maxActive - 1, g_npcDistance, g_cullOffscreen ? "paused" : "kept");
 		if (faceChanged) {
 			for (auto& [id, state] : g_actors) {
 				if (!state.built.empty()) {
