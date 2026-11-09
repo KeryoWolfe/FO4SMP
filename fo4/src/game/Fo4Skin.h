@@ -65,4 +65,11 @@ namespace hdt::fo4
 		int depth = 0;
 	};
 	std::string ReadNifNodes(std::string_view a_data, std::unordered_map<std::string, NifNode>& a_out);
+
+	// The value of the first NiStringExtraData named a_key in a NIF (e.g. "HDT Skinned Mesh Physics Object"), or "".
+	std::string ReadNifStringExtraData(std::string_view a_data, std::string_view a_key);
+
+	// Points skin entry a_index of a_shape at a_node (bone and world-transform pointers); the bone data is untouched,
+	// so a_node must stand where the original bone would. Returns "" on success, or why not.
+	std::string PointSkinEntryAt(RE::BSTriShape* a_shape, std::uint32_t a_index, RE::NiNode* a_node);
 }

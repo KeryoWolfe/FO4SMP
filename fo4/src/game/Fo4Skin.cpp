@@ -431,6 +431,46 @@ namespace hdt::fo4
 		return a_out.empty() ? "no skinned shapes found" : std::string{};
 	}
 
+	std::string ReadNifStringExtraData(std::string_view a_data, std::string_view a_key)
+	{
+		NifFile file;
+		if (!ParseNif(a_data, file).empty()) {
+			return {};
+		}
+		for (std::uint32_t i = 0; i < file.numBlocks; ++i) {
+			if (file.TypeOf(static_cast<std::int32_t>(i)) != "NiStringExtraData"sv) {
+				continue;
+			}
+			// NiExtraData: name (string index); NiStringExtraData: data (string index).
+			NifReader r{ a_data.substr(file.offsets[i], file.sizes[i]) };
+			const auto name = r.Get<std::uint32_t>();
+			const auto value = r.Get<std::uint32_t>();
+			if (r.ok && name < file.strings.size() && value < file.strings.size() && file.strings[name] == a_key) {
+				return file.strings[value];
+			}
+		}
+		return {};
+	}
+
+	std::string PointSkinEntryAt(RE::BSTriShape* a_shape, std::uint32_t a_index, RE::NiNode* a_node)
+	{
+		const auto shape = reinterpret_cast<std::uintptr_t>(a_shape);
+		const auto skin = Read<std::uintptr_t>(shape, kGeometrySkinInstance);
+		if (!Plausible(skin) || !IsKindOf(reinterpret_cast<void*>(skin), ".?AVInstance@BSSkin@@"sv)) {
+			return "no skin instance";
+		}
+		auto& bones = *reinterpret_cast<RawArray*>(skin + kInstanceBones);
+		auto& worlds = *reinterpret_cast<RawArray*>(skin + kInstanceWorldTransforms);
+		if (a_index >= bones.size || !Plausible(reinterpret_cast<std::uintptr_t>(bones.data))) {
+			return "bone index out of range";
+		}
+		static_cast<RE::NiAVObject**>(bones.data)[a_index] = a_node;
+		if (worlds.size == bones.size && Plausible(reinterpret_cast<std::uintptr_t>(worlds.data))) {
+			static_cast<RE::NiTransform**>(worlds.data)[a_index] = &a_node->world;
+		}
+		return {};
+	}
+
 	std::string ReadNifNodes(std::string_view a_data, std::unordered_map<std::string, NifNode>& a_out)
 	{
 		a_out.clear();

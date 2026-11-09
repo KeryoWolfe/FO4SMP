@@ -64,6 +64,20 @@ namespace FO4SMP::Offsets
 	// pause the game, which F4SE's own input hooks test. The timer's delta didn't drop in the pause menu (run 40).
 	inline constexpr REL::ID UI_Singleton{ 4796314 };
 
+	// Milestone 5, per-actor bone nodes. F4SE 1.11.240 (GameAPI.cpp, NiNodes.h/.cpp): the main heap object
+	// g_mainHeap 0x03E74AB0 = ID 4807654; Heap::Allocate(size, alignment, aligned) 0x01657DE0 = ID 2267872;
+	// NiNode::NiNode(UInt16 children) 0x016BE500 = ID 2269948. Checked in the executable: the game itself
+	// allocates NiNodes as Allocate(&mainHeap, 0x140, 0x10, true) then calls that constructor (120 call sites).
+	inline constexpr REL::ID MainHeap{ 4807654 };
+	inline constexpr REL::ID HeapAllocate{ 2267872 };
+	inline constexpr REL::ID NiNodeCtor{ 2269948 };
+
+	// TESDataHandler* (F4SE 1.11.240 g_dataHandler 0x030E7100 = ID 4796135); its form arrays start at +0x68
+	// (CommonLibF4 and F4SE agree), BSTArray<BGSHeadPart*> is form type 15: +0x1D0. BGSHeadPart: model
+	// (TESModel at +0x98, its path at +0xA0), editor ID / part name (BSFixedString at +0x170), which the face
+	// generator names each head part's shape after.
+	inline constexpr REL::ID DataHandler_Singleton{ 4796135 };
+
 	// Armor attach (milestone 4). BipedAnim::ApplySkinnedObjects calls BipedAnim::AttachSkinnedObject from two
 	// places (1.11.240: +0x35DDB2 and +0x35DDDB, inside a chained chunk of the function); both are `call rel32`.
 	// FO4SMP hooks those calls, not the function: LooksMenu (f4ee.dll) detours the function itself, and a call
@@ -109,6 +123,8 @@ namespace FO4SMP::Offsets
 		Function{ "BipedAnimRemovePart"sv, 2194342, 575576, { 0x48, 0x8B, 0xC4, 0x48, 0x89, 0x50, 0x10, 0x48 }, true },
 		Function{ "FirstThirdPersonSwitchEventSource"sv, 2233725, 930195, { 0x48, 0x83, 0xEC, 0x28, 0x65, 0x48, 0x8B, 0x04 }, false },
 		Function{ "LookupREFRByHandle"sv, 2190940, 0, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C }, true },
+		Function{ "HeapAllocate"sv, 2267872, 0, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C }, true },
+		Function{ "NiNodeCtor"sv, 2269948, 0, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74 }, true },
 		Function{ "LooksMenuUtilsShowLooksMenu"sv, 2223366, 411372, { 0x48, 0x89, 0x5C, 0x24, 0x18, 0x57, 0x48, 0x83 }, true },
 		Function{ "MainOnIdle"sv, 2228917, 633524, { 0x48, 0x8B, 0xC4, 0x48, 0x89, 0x58, 0x08, 0x48 }, true },
 		Function{ "Reset3D"sv, 2229913, 302888, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C }, true },

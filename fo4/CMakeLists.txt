@@ -88,6 +88,8 @@ add_library(
 	src/game/Fo4ConvertNi.cpp
 	src/game/Fo4ConvertNi.h
 	src/game/Fo4NiUtils.h
+	src/game/Fo4Nodes.cpp
+	src/game/Fo4Nodes.h
 	src/game/Fo4Settings.cpp
 	src/game/Fo4Settings.h
 	src/game/Fo4Skin.cpp

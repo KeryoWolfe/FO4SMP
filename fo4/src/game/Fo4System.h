@@ -67,6 +67,10 @@ namespace hdt
 		// skeleton has none of the body's *_skin bones), summed over the build.
 		int m_unknownSkinBones = 0;
 
+		// Milestone 5: bone nodes outside the skeleton the XML may name (FO4SMP's per-actor copies of face-generation
+		// bones), looked up by name after the skeleton. Optional; must outlive the build.
+		const std::unordered_map<std::string, RE::NiNode*>* m_extraNodes = nullptr;
+
 	protected:
 		// O(1) bone lookup index. These are just to speed up the hashmap more since BSStrings are pooled
 		struct PooledStringHash

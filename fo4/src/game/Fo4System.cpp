@@ -204,7 +204,15 @@ namespace hdt
 	RE::NiNode* Fo4SystemCreator::findObjectByName(const RE::BSFixedString& name)
 	{
 		// TODO check it's not a lurker skeleton
-		return findNode(m_skeleton, name);
+		if (auto* node = findNode(m_skeleton, name)) {
+			return node;
+		}
+		if (m_extraNodes) {
+			if (const auto it = m_extraNodes->find(name.c_str()); it != m_extraNodes->end()) {
+				return it->second;
+			}
+		}
+		return nullptr;
 	}
 
 	Fo4Bone* Fo4SystemCreator::getOrCreateBone(const RE::BSFixedString& name)

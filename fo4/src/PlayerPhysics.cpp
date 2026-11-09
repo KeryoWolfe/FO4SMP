@@ -7,6 +7,7 @@
 #include "game/Fo4NiUtils.h"
 #include "game/Fo4Skin.h"
 #include "game/Fo4Bone.h"
+#include "game/Fo4Nodes.h"
 #include "game/Fo4System.h"
 #include "hdtDefaultBBPList.h"
 
@@ -111,8 +112,11 @@ namespace FO4SMP::PlayerPhysics
 			return *reinterpret_cast<RE::NiAVObject* const*>(loaded + 0x08);
 		}
 
+		void ForgetFaceSystems();
+
 		void Drop(std::string_view a_why)
 		{
+			ForgetFaceSystems();
 			if (S().built.empty()) {
 				return;
 			}
@@ -161,24 +165,138 @@ namespace FO4SMP::PlayerPhysics
 			return false;
 		}
 
-		// Milestone 5: Fallout 4's face generation skins head parts to bones the skeleton doesn't have (SMP Head's
-		// Head_SMP_*) and leaves those bones outside every actor's scene graph, at the world origin (run 38:
-		// ~69,600 units from the player); the head's skinned bounds then stretch to the origin and, after the camera
-		// pulls in, the player stays faded. Those bone nodes are shared by every actor wearing the head: anchoring
-		// them on one actor's HEAD dragged every male face toward that actor (run 39: everyone's face followed Marcus).
-		// So each actor's skin entry is rebound to its own skeleton bone instead: the bone named like the face bone's
-		// first ancestor (HEAD in SMP Head's NIF), with the skin-to-bone transform moved into that bone's space by the
-		// face bone's NIF locals. The face then holds its rest shape; physics on these bones needs per-actor nodes
-		// (milestone 5, next step).
+		// Milestone 5: Fallout 4's face generation skins head parts (SMP Head's head, SMP hair) to bones the skeleton
+		// doesn't have and leaves those bones outside every actor's scene graph, unplaced (run 38: at the world
+		// origin) and shared by every actor wearing the part (run 39: anchoring them on one actor dragged every face
+		// toward him). Each actor gets its own copies: for a face shape skinned to such bones, the head part's NIF
+		// (found by the shape's name, which is the head part's editor ID) gives every node not in the skeleton with
+		// its parent and local transform; FO4SMP makes those nodes (outside the scene graph, parented by pointer only)
+		// and points the actor's skin entries at them. They follow the skeleton every frame unless simulated; the
+		// NIF's "HDT Skinned Mesh Physics Object" names the physics XML (face generation drops it from the shape).
+		struct FacePart
+		{
+			RE::BSTriShape* shape = nullptr;
+			std::string nif;
+			std::string xml;
+			std::vector<std::string> nifShapes;  // the NIF's skinned shape names (the XML's shape names)
+		};
+		struct FaceNodes
+		{
+			RE::NiAVObject* root = nullptr;
+			std::vector<RE::NiPointer<RE::NiNode>> nodes;  // parents first
+			std::unordered_map<std::string, RE::NiNode*> byName;
+			std::unordered_set<RE::NiNode*> simulated;
+			std::vector<FacePart> parts;
+			bool systemsBuilt = false;
+		};
+		std::unordered_map<std::uint32_t, FaceNodes> g_faces;
+		// Nodes of faces whose 3D went away: a skin instance may still point at them, so they are never freed.
+		std::vector<RE::NiPointer<RE::NiNode>> g_faceGraveyard;
+
 		std::set<std::pair<std::uintptr_t, std::uint32_t>> g_reboundBoneData;
 
-		void BuildHeadFollow(RE::NiAVObject* a_root)
+		// Fallback when a face shape's head part NIF can't be read (run 40's approach): the skin entry is moved onto the
+		// first skeleton bone among the shared bone's ancestors, at the shared bone's pose relative to it. The face
+		// then follows the head, but its bones can't be simulated.
+		std::string RebindToSkeleton(RE::BSTriShape* a_shape, std::uint32_t a_index, RE::NiNode* a_bone, RE::NiNode* a_skeleton)
+		{
+			RE::NiTransform local = a_bone->local;
+			RE::NiNode* anchor = nullptr;
+			std::string chain = a_bone->name.c_str();
+			for (auto* n = a_bone; n->parent && !anchor; n = n->parent) {
+				chain += std::string{ " < " } + n->parent->name.c_str();
+				if (auto* skel = hdt::fo4::findNode(a_skeleton, n->parent->name); skel && skel != n->parent) {
+					anchor = skel;
+				} else {
+					local = hdt::fo4::Compose(n->parent->local, local);
+				}
+			}
+			if (!anchor) {
+				return "no ancestor named like a skeleton bone: " + chain;
+			}
+			return hdt::fo4::RebindSkinBone(a_shape, a_index, anchor, local, g_reboundBoneData);
+		}
+
+		std::unordered_map<std::string, std::string> g_headPartModels;  // lower-case editor ID -> model path
+		bool g_headPartsLoaded = false;
+
+		std::string Lower(std::string a_s)
+		{
+			std::ranges::transform(a_s, a_s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+			return a_s;
+		}
+
+		const std::string* HeadPartModel(const char* a_shapeName)
+		{
+			if (!g_headPartsLoaded) {
+				g_headPartsLoaded = true;
+				static REL::Relocation<std::uintptr_t*> dataHandler{ Offsets::DataHandler_Singleton };
+				if (const auto handler = *dataHandler) {
+					const auto data = *reinterpret_cast<const std::uintptr_t* const*>(handler + 0x1D0);
+					const auto size = *reinterpret_cast<const std::uint32_t*>(handler + 0x1D0 + 0x10);
+					for (std::uint32_t i = 0; data && i < size && i < 100000; ++i) {
+						const auto part = data[i];
+						if (!part) {
+							continue;
+						}
+						const auto* id = reinterpret_cast<const RE::BSFixedString*>(part + 0x170)->c_str();
+						// BGSHeadPart: its model (BGSModelMaterialSwap at +0x30, TESModel::model at +0x08), else its chargen model (+0x98, +0x08).
+						const auto* model = reinterpret_cast<const RE::BSFixedString*>(part + 0x38)->c_str();
+						if (!model || !*model) {
+							model = reinterpret_cast<const RE::BSFixedString*>(part + 0xA0)->c_str();
+						}
+						if (id && *id && model && *model) {
+							g_headPartModels[Lower(id)] = model;
+						}
+					}
+					logger::info("Face physics: {} head part(s) with a model (of {})", g_headPartModels.size(), size);
+				} else {
+					logger::warn("Face physics: no data handler; head parts can't be looked up");
+				}
+			}
+			const auto it = g_headPartModels.find(Lower(a_shapeName));
+			return it == g_headPartModels.end() ? nullptr : &it->second;
+		}
+
+		FaceNodes& Face()
+		{
+			return g_faces[S().formID];
+		}
+
+		void ForgetFaceSystems()
+		{
+			if (const auto it = g_faces.find(S().formID); it != g_faces.end()) {
+				it->second.simulated.clear();
+				it->second.systemsBuilt = false;
+			}
+		}
+
+		// Makes or updates the actor's own copies of its face's out-of-graph bones and points its skin at them.
+		// Returns how many new face parts with a physics XML were found.
+		int BuildFace(RE::NiAVObject* a_root)
 		{
 			auto* skeleton = hdt::castNiNode(a_root);
 			if (!skeleton) {
-				return;
+				return 0;
 			}
-			int rebound = 0;
+			auto& face = Face();
+			if (face.root != a_root) {
+				g_faceGraveyard.insert(g_faceGraveyard.end(), face.nodes.begin(), face.nodes.end());
+				face = FaceNodes{};
+				face.root = a_root;
+			}
+			std::unordered_set<RE::NiNode*> ours;
+			for (const auto& n : face.nodes) {
+				ours.insert(n.get());
+			}
+			// The parts are found again on each call: a shape that's gone (a hairstyle changed in place) is dropped
+			// without being looked at; one already pointed at this actor's nodes keeps its part.
+			std::unordered_map<RE::BSTriShape*, FacePart> known;
+			for (auto& part : face.parts) {
+				known.emplace(part.shape, std::move(part));
+			}
+			face.parts.clear();
+			int newParts = 0, pointed = 0, rebound = 0;
 			std::vector<std::string> problems;
 			std::function<void(RE::NiAVObject*, int)> walk = [&](RE::NiAVObject* a_o, int a_depth) {
 				if (!a_o || a_depth > 40) {
@@ -186,38 +304,111 @@ namespace FO4SMP::PlayerPhysics
 				}
 				if (auto* tri = hdt::castBSTriShape(a_o)) {
 					hdt::fo4::SkinnedShape skinned;
+					std::vector<std::uint32_t> orphans;
 					if (hdt::fo4::ReadSkinnedShape(tri, skinned, false).empty()) {
 						for (std::uint32_t i = 0; i < skinned.bones.size(); ++i) {
 							auto* bone = skinned.bones[i].node;
-							if (!bone || IsAttachedUnder(bone, a_root)) {
-								continue;
+							if (bone && !IsAttachedUnder(bone, a_root) && !ours.contains(bone)) {
+								orphans.push_back(i);
 							}
-							// The bone's pose relative to the first ancestor named like a skeleton bone.
-							RE::NiTransform local = bone->local;
-							RE::NiNode* anchor = nullptr;
-							std::string chain = bone->name.c_str();
-							for (auto* n = bone; n->parent && !anchor; n = n->parent) {
-								chain += std::string{ " < " } + n->parent->name.c_str();
-								if (auto* skel = hdt::fo4::findNode(skeleton, n->parent->name); skel && skel != n->parent) {
-									anchor = skel;
+						}
+					}
+					if (orphans.empty()) {
+						if (const auto it = known.find(tri); it != known.end()) {
+							face.parts.push_back(std::move(it->second));
+							known.erase(it);
+						}
+					} else {
+						const auto* model = HeadPartModel(tri->name.c_str());
+						bool done = false;
+						if (!model) {
+							if (problems.size() < 8) {
+								problems.push_back(std::format("shape '{}': no head part of that name", tri->name.c_str()));
+							}
+						} else {
+							const std::string nifPath = (std::filesystem::path{ "Meshes" } / *model).string();
+							const auto data = hdt::fo4::readAllFile(nifPath.c_str());
+							std::unordered_map<std::string, hdt::fo4::NifNode> nifNodes;
+							std::unordered_map<std::string, std::vector<std::string>> nifShapes;
+							const auto error = data.empty() ? std::string{ "not found (loose files only)" } : hdt::fo4::ReadNifNodes(data, nifNodes);
+							if (!error.empty()) {
+								if (problems.size() < 8) {
+									problems.push_back(std::format("shape '{}': NIF {}: {}", tri->name.c_str(), nifPath, error));
+								}
+							} else {
+								hdt::fo4::ReadNifSkinBoneNames(data, nifShapes);
+								// This actor's node for a NIF node, made on demand, parents first.
+								std::function<RE::NiNode*(const std::string&, int)> ensure = [&](const std::string& a_name, int a_depth) -> RE::NiNode* {
+									if (a_name.empty() || a_depth > 32) {
+										return nullptr;
+									}
+									if (const auto it = face.byName.find(a_name); it != face.byName.end()) {
+										return it->second;
+									}
+									if (auto* skel = hdt::fo4::findNode(skeleton, RE::BSFixedString(a_name.c_str()))) {
+										return skel;
+									}
+									const auto nif = nifNodes.find(a_name);
+									if (nif == nifNodes.end()) {
+										return nullptr;
+									}
+									auto* parent = ensure(nif->second.parent, a_depth + 1);
+									if (!parent) {
+										return nullptr;
+									}
+									auto* node = hdt::fo4::CreateNode(a_name.c_str(), nif->second.local);
+									if (!node) {
+										return nullptr;
+									}
+									node->parent = parent;
+									node->world = hdt::fo4::Compose(parent->world, node->local);
+									face.nodes.push_back(RE::NiPointer<RE::NiNode>(node));
+									face.byName[a_name] = node;
+									ours.insert(node);
+									return node;
+								};
+								// Every node of the NIF the skeleton lacks (the XML may name bones no vertex uses).
+								for (const auto& [name, nif] : nifNodes) {
+									ensure(name, 0);
+								}
+								for (const auto i : orphans) {
+									auto* bone = skinned.bones[i].node;
+									auto* target = ensure(bone->name.c_str(), 0);
+									if (!target) {
+										if (problems.size() < 8) {
+											problems.push_back(std::format("shape '{}': bone '{}' isn't placed under a skeleton bone in {}", tri->name.c_str(), bone->name.c_str(), nifPath));
+										}
+										continue;
+									}
+									if (hdt::fo4::PointSkinEntryAt(tri, i, target).empty()) {
+										++pointed;
+									}
+								}
+								const auto xml = hdt::fo4::ReadNifStringExtraData(data, kPhysicsExtraData);
+								FacePart part{ tri, nifPath, xml, {} };
+								for (const auto& [shapeName, bones] : nifShapes) {
+									part.nifShapes.push_back(shapeName);
+								}
+								logger::info("{}: face part '{}' ({}): {} skin entr(ies) pointed at the actor's own bones{}", Label(), tri->name.c_str(), nifPath, orphans.size(),
+									xml.empty() ? std::string{ ", no physics" } : std::format(", physics {}", xml));
+								if (!xml.empty()) {
+									++newParts;
+								}
+								face.parts.push_back(std::move(part));
+								done = true;
+							}
+						}
+						if (!done) {
+							for (const auto i : orphans) {
+								auto* bone = skinned.bones[i].node;
+								if (const auto error = RebindToSkeleton(tri, i, bone, skeleton); !error.empty()) {
+									if (problems.size() < 8) {
+										problems.push_back(std::format("'{}' in '{}': {}", bone->name.c_str(), tri->name.c_str(), error));
+									}
 								} else {
-									local = hdt::fo4::Compose(n->parent->local, local);
+									++rebound;
 								}
 							}
-							if (!anchor) {
-								if (problems.size() < 8) {
-									problems.push_back("no ancestor named like a skeleton bone: " + chain);
-								}
-								continue;
-							}
-							if (const auto error = hdt::fo4::RebindSkinBone(tri, i, anchor, local, g_reboundBoneData); !error.empty()) {
-								if (problems.size() < 8) {
-									problems.push_back(std::format("'{}' in '{}': {}", bone->name.c_str(), tri->name.c_str(), error));
-								}
-								continue;
-							}
-							++rebound;
-							if (Verbose()) logger::info("{}: face bone '{}' (shape '{}') rebound to '{}'; chain {}", Label(), bone->name.c_str(), tri->name.c_str(), anchor->name.c_str(), chain);
 						}
 					}
 				}
@@ -229,10 +420,29 @@ namespace FO4SMP::PlayerPhysics
 			};
 			walk(a_root, 0);
 			for (const auto& p : problems) {
-				logger::info("{}: skin bone outside the 3D left as it is ({})", Label(), p);
+				logger::info("{}: face bones left as they are ({})", Label(), p);
+			}
+			if (pointed) {
+				logger::info("{}: {} own face bone node(s) for this actor", Label(), face.nodes.size());
 			}
 			if (rebound) {
-				logger::info("{}: {} skin entr(ies) on bones outside the scene graph rebound to the actor's own skeleton", Label(), rebound);
+				logger::info("{}: {} face skin entr(ies) rebound to the skeleton instead (no head part NIF; no physics for them)", Label(), rebound);
+			}
+			return newParts;
+		}
+
+		// Each frame, before the physics reads the skeleton: the actor's own face nodes follow their parents, except
+		// those the physics moves.
+		void UpdateFaceNodes(RE::NiAVObject* a_root)
+		{
+			const auto it = g_faces.find(S().formID);
+			if (it == g_faces.end() || it->second.root != a_root) {
+				return;
+			}
+			for (const auto& n : it->second.nodes) {
+				if (n->parent && !it->second.simulated.contains(n.get())) {
+					n->world = hdt::fo4::Compose(n->parent->world, n->local);
+				}
 			}
 		}
 
@@ -1089,6 +1299,63 @@ namespace FO4SMP::PlayerPhysics
 
 	namespace
 	{
+		// Milestone 5: physics for face parts (SMP hair, SMP Head) on the actor's own face nodes (BuildFace). The XML's
+		// shape names are the head part NIF's; face generation names the shape after the head part, so each NIF shape
+		// name is mapped to it. Bones are looked up in the skeleton, then among the actor's face nodes.
+		void BuildFaceSystems(RE::NiAVObject* a_root)
+		{
+			auto* skeleton = hdt::castNiNode(a_root);
+			const auto it = g_faces.find(S().formID);
+			if (!skeleton || it == g_faces.end() || it->second.root != a_root || it->second.systemsBuilt) {
+				return;
+			}
+			auto& face = it->second;
+			face.systemsBuilt = true;
+			for (const auto& part : face.parts) {
+				if (part.xml.empty() || !part.shape->parent) {
+					continue;
+				}
+				const std::string& file = part.xml;  // as written in the NIF (Meshes\...), like an outfit's
+				hdt::DefaultBBP::PhysicsFile_t physics{ file, {} };
+				for (const auto& nifShape : part.nifShapes) {
+					physics.second[nifShape].insert(part.shape->name.c_str());
+				}
+				hdt::Fo4SystemCreator creator;
+				creator.m_extraNodes = &face.byName;
+				const auto start = std::chrono::steady_clock::now();
+				auto system = creator.createOrUpdateSystem(skeleton, part.shape->parent, &physics, {}, nullptr);
+				const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+				if (!system) {
+					logger::warn("{}: face part '{}': {} built nothing (file missing or unreadable, or no bones found; see the lines above)", Label(), part.shape->name.c_str(), file);
+					continue;
+				}
+				std::size_t dynamic = 0;
+				for (auto& bone : system->getBones()) {
+					auto* fb = static_cast<hdt::Fo4Bone*>(bone.get());
+					if (fb->m_rig.isStaticOrKinematicObject()) {
+						continue;
+					}
+					++dynamic;
+					auto* node = fb->m_node.get();
+					if (face.byName.contains(node->name.c_str()) && node->parent) {
+						face.simulated.insert(node);
+						S().rest[node] = { node->parent, node->local };
+					}
+				}
+				logger::info("{}: face part '{}': {} built in {:.1f} ms: {} bones ({} simulated), {} collision bodies", Label(), part.shape->name.c_str(),
+					file, ms, system->getBones().size(), dynamic, system->meshes().size());
+				if (!S().isPlayer && g_noCollision.contains(S().formID)) {
+					for (auto& mesh : system->meshes()) {
+						static_cast<hdt::Fo4Body*>(mesh.get())->m_disabled = true;
+					}
+				}
+				LogCollisionFilter(system.get());
+				PhysicsWorld::Get()->AddSystem(system.get());
+				// The shape as the model: when the part goes (another hairstyle), the system is dropped.
+				S().built.push_back({ system, RE::NiPointer<RE::NiAVObject>(part.shape), file });
+			}
+		}
+
 		// Placement only (NPCs not simulated): the outfit's added bones hang off Root with an identity local, so a
 		// body with SMP bones collapses (pecs and breasts sink, run 32-33) until something places them. Put each on its
 		// NIF parent with its NIF local and keep it there every frame: the body's rest shape, without physics.
@@ -1422,9 +1689,16 @@ namespace FO4SMP::PlayerPhysics
 				S().headCheckAt = a_now + Seconds(kScanDelaySeconds);
 			}
 			if (a_root && S().headCheckAt.time_since_epoch().count() && a_now >= S().headCheckAt) {
-				BuildHeadFollow(a_root);
+				if (BuildFace(a_root) > 0 && S().simulate && Face().systemsBuilt) {
+					// A new face part with physics (a new hairstyle): rebuild this actor's systems.
+					Drop("a face part with physics appeared");
+					S().nextCheck = a_now;
+				}
 				// The player's face can be rebuilt in place (LooksMenu, a new hairstyle): look again now and then.
 				S().headCheckAt = S().isPlayer ? a_now + Seconds(15.0) : std::chrono::steady_clock::time_point{};
+			}
+			if (a_root) {
+				UpdateFaceNodes(a_root);
 			}
 			if (!S().simulate) {
 				if (a_generation != S().generation || a_root != S().root) {
@@ -1479,6 +1753,9 @@ namespace FO4SMP::PlayerPhysics
 				// NPCs: only what the attach hook saw (the scan's defaultBBPs.xml fallback is for the player).
 				static const hdt::DefaultBBPList kNone{};
 				Scan(a_root, S().isPlayer ? a_defaults : kNone);
+				if (S().simulate) {
+					BuildFaceSystems(a_root);
+				}
 				S().nextCheck = a_now + Seconds(S().waiting ? 1.0 : (S().built.empty() ? kRescanSeconds : kAttachCheckSeconds));
 				return;
 			}
@@ -1503,6 +1780,7 @@ namespace FO4SMP::PlayerPhysics
 					return;
 				}
 			}
+			BuildFaceSystems(a_root);  // face parts found after the outfit's physics was built
 			S().nextCheck = a_now + Seconds(kAttachCheckSeconds);
 		}
 
