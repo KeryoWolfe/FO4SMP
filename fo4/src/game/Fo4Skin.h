@@ -38,6 +38,14 @@ namespace hdt::fo4
 
 	// Fills a_out from a_shape. Returns "" on success, or why the shape can't be read.
 	std::string ReadSkinnedShape(RE::BSTriShape* a_shape, SkinnedShape& a_out, bool a_withTriangles);
+
+	// Points skin entry a_index of a_shape at a_anchor instead of its bone, where the bone's pose relative to the
+	// anchor is a_local (bone world = anchor world composed with a_local): the instance's bone and world-transform
+	// pointers are replaced, and the bone data's skin-to-bone transform and bounding sphere are moved into the
+	// anchor's space, once per (bone data, index) since bone data can be shared between instances of a model.
+	// Returns "" on success, or why not.
+	std::string RebindSkinBone(RE::BSTriShape* a_shape, std::uint32_t a_index, RE::NiNode* a_anchor, const RE::NiTransform& a_local,
+		std::set<std::pair<std::uintptr_t, std::uint32_t>>& a_adjusted);
 }
 
 namespace hdt::fo4

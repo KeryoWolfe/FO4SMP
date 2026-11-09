@@ -54,6 +54,11 @@ namespace FO4SMP::Offsets
 	// at +0x2A, inMenuMode at +0x1D0 (CommonLibF4 Main.h). Used to stop stepping while the game is paused.
 	inline constexpr REL::ID Main_GameSystemsShouldUpdate{ 2698031 };
 
+	// The game timer (CommonLibF4 BSTimer::GetSingleton, ID 2703179 = +0x339F420 in 1.11.240): delta (game time,
+	// +0x10), realTimeDelta (+0x14), disableCounter (+0x38). The pause menu doesn't clear "game systems should
+	// update" (run 39), so the pause is read from the timer.
+	inline constexpr REL::ID BSTimer_Singleton{ 2703179 };
+
 	// Armor attach (milestone 4). BipedAnim::ApplySkinnedObjects calls BipedAnim::AttachSkinnedObject from two
 	// places (1.11.240: +0x35DDB2 and +0x35DDDB, inside a chained chunk of the function); both are `call rel32`.
 	// FO4SMP hooks those calls, not the function: LooksMenu (f4ee.dll) detours the function itself, and a call

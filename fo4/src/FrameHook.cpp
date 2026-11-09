@@ -54,16 +54,20 @@ namespace FO4SMP::FrameHook
 		bool Paused(void* a_main)
 		{
 			static REL::Relocation<bool*> shouldUpdate{ Offsets::Main_GameSystemsShouldUpdate };
+			static REL::Relocation<std::uintptr_t> timer{ Offsets::BSTimer_Singleton };
 			const auto main = reinterpret_cast<std::uintptr_t>(a_main);
 			const bool freezeTime = main && *reinterpret_cast<const bool*>(main + 0x2A);
-			const bool inMenuMode = main && *reinterpret_cast<const bool*>(main + 0x1D0);
 			const bool update = *shouldUpdate;
-			const bool paused = !update || freezeTime;
+			const float delta = *reinterpret_cast<const float*>(timer.address() + 0x10);
+			const float realDelta = *reinterpret_cast<const float*>(timer.address() + 0x14);
+			const auto disabled = *reinterpret_cast<const std::uint32_t*>(timer.address() + 0x38);
+			const bool paused = !update || freezeTime || disabled > 0 || !(delta > 0.0f);
 			static bool s_paused = false;
 			static int s_logged = 0;
-			if (paused != s_paused && s_logged < 40) {
+			if (paused != s_paused && s_logged < 60) {
 				++s_logged;
-				logger::info("Frame step: {} (game systems update {}, freeze time {}, menu mode {})", paused ? "paused" : "resumed", update, freezeTime, inMenuMode);
+				logger::info("Frame step: {} (game systems update {}, freeze time {}, timer delta {:.4f} s, real {:.4f} s, timer disabled {})",
+					paused ? "paused" : "resumed", update, freezeTime, delta, realDelta, disabled);
 			}
 			s_paused = paused;
 			return paused;

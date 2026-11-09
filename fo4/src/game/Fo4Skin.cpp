@@ -81,6 +81,42 @@ namespace hdt::fo4
 		}
 	}
 
+	std::string RebindSkinBone(RE::BSTriShape* a_shape, std::uint32_t a_index, RE::NiNode* a_anchor, const RE::NiTransform& a_local,
+		std::set<std::pair<std::uintptr_t, std::uint32_t>>& a_adjusted)
+	{
+		const auto shape = reinterpret_cast<std::uintptr_t>(a_shape);
+		const auto skin = Read<std::uintptr_t>(shape, kGeometrySkinInstance);
+		if (!Plausible(skin) || !IsKindOf(reinterpret_cast<void*>(skin), ".?AVInstance@BSSkin@@"sv)) {
+			return "no skin instance";
+		}
+		auto& bones = *reinterpret_cast<RawArray*>(skin + kInstanceBones);
+		auto& worlds = *reinterpret_cast<RawArray*>(skin + kInstanceWorldTransforms);
+		const auto boneData = Read<std::uintptr_t>(skin, kInstanceBoneData);
+		if (a_index >= bones.size || !Plausible(reinterpret_cast<std::uintptr_t>(bones.data))) {
+			return "bone index out of range";
+		}
+		if (!Plausible(boneData) || !IsKindOf(reinterpret_cast<void*>(boneData), ".?AVBoneData@BSSkin@@"sv)) {
+			return "no bone data";
+		}
+		auto& transforms = *reinterpret_cast<RawArray*>(boneData + kBoneDataTransforms);
+		if (a_index >= transforms.size || !Plausible(reinterpret_cast<std::uintptr_t>(transforms.data))) {
+			return "bone data index out of range";
+		}
+		if (a_adjusted.insert({ boneData, a_index }).second) {
+			auto& t = static_cast<RawBoneTransform*>(transforms.data)[a_index];
+			t.transform = Compose(a_local, t.transform);
+			RE::NiTransform center = Identity();
+			center.translate = t.center;
+			t.center = Compose(a_local, center).translate;
+			t.radius *= a_local.scale;
+		}
+		static_cast<RE::NiAVObject**>(bones.data)[a_index] = a_anchor;
+		if (worlds.size == bones.size && Plausible(reinterpret_cast<std::uintptr_t>(worlds.data))) {
+			static_cast<RE::NiTransform**>(worlds.data)[a_index] = &a_anchor->world;
+		}
+		return {};
+	}
+
 	std::string ReadSkinnedShape(RE::BSTriShape* a_shape, SkinnedShape& a_out, bool a_withTriangles)
 	{
 		const auto shape = reinterpret_cast<std::uintptr_t>(a_shape);
