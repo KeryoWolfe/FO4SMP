@@ -1197,6 +1197,68 @@ namespace FO4SMP::PlayerPhysics
 			}
 		}
 
+		// Milestone 5 groundwork (run 37): the player's head as Fallout 4 builds it. Logs every BSFaceGenNiNode subtree
+		// (names, classes, string extra data such as "HDT Skinned Mesh Physics Object", skinned shapes and where their
+		// bones are), and every node of the 3D parked more than 5,000 units from the root: SMP Head's face bones (not in
+		// the skeleton) are suspected to sit at the world origin, which would stretch the player's bounds to ~35,000
+		// units (run 37) and keep the player faded after the camera pulls in.
+		void DumpHeadAndStrays(RE::NiAVObject* a_root)
+		{
+			const auto& r = a_root->world.translate;
+			auto dist = [&](const RE::NiPoint3& a_p) {
+				return std::sqrt((a_p.x - r.x) * (a_p.x - r.x) + (a_p.y - r.y) * (a_p.y - r.y) + (a_p.z - r.z) * (a_p.z - r.z));
+			};
+			auto extras = [](RE::NiAVObject* a_o) {
+				std::string out;
+				if (a_o->extra) {
+					for (auto* data : *a_o->extra) {
+						if (!data) {
+							continue;
+						}
+						out += std::format(" [{} {}", hdt::fo4::ClassName(data), data->name.c_str());
+						if (hdt::fo4::IsKindOf(data, ".?AVNiStringExtraData@@"sv)) {
+							out += std::format(" = '{}'", static_cast<RE::NiStringExtraData*>(data)->data.c_str());
+						}
+						out += "]";
+					}
+				}
+				return out;
+			};
+			int strays = 0;
+			std::function<void(RE::NiAVObject*, int, bool)> walk = [&](RE::NiAVObject* a_o, int a_depth, bool a_inFace) {
+				if (!a_o || a_depth > 40) {
+					return;
+				}
+				const bool face = a_inFace || hdt::fo4::IsKindOf(a_o, ".?AVBSFaceGenNiNode@@"sv);
+				const float d = dist(a_o->world.translate);
+				if (d > 5000.0f && strays < 40) {
+					++strays;
+					logger::info("Head dump: stray {} '{}' (parent '{}') at {:.0f} units from the root", hdt::fo4::ClassName(a_o), a_o->name.c_str(),
+						a_o->parent ? a_o->parent->name.c_str() : "", d);
+				}
+				if (face) {
+					std::string line = std::format("Head dump: {}{} '{}' at {:.0f}{}", std::string(std::min(a_depth, 12) * 2, ' '), hdt::fo4::ClassName(a_o), a_o->name.c_str(), d, extras(a_o));
+					if (auto* tri = hdt::castBSTriShape(a_o)) {
+						hdt::fo4::SkinnedShape skinned;
+						if (hdt::fo4::ReadSkinnedShape(tri, skinned, false).empty()) {
+							line += std::format("; skinned, {} bones:", skinned.bones.size());
+							for (const auto& b : skinned.bones) {
+								line += b.node ? std::format(" {}@{:.0f}", b.node->name.c_str(), dist(b.node->world.translate)) : std::string{ " (null)" };
+							}
+						}
+					}
+					logger::info("{}", line);
+				}
+				if (auto* n = hdt::castNiNode(a_o)) {
+					for (auto& child : hdt::fo4::Children(n)) {
+						walk(child.get(), a_depth + 1, face);
+					}
+				}
+			};
+			walk(a_root, 0, false);
+			logger::info("Head dump: done ({} stray node(s) over 5,000 units from the root)", strays);
+		}
+
 		// Diagnostic (run 36, the vanishing player): each frame, the player's 3D root and the built model's bounds and
 		// culled flag; logs when either turns odd (radius over 1,000 units or not finite, center over 500 units from
 		// the root, culled) and when it turns normal again, with the farthest simulated bone at that moment.
@@ -1204,6 +1266,11 @@ namespace FO4SMP::PlayerPhysics
 		{
 			static bool s_odd = false;
 			static int s_logged = 0;
+			static bool s_dumpedOnce = false;
+			if (!s_dumpedOnce) {
+				s_dumpedOnce = true;
+				DumpHeadAndStrays(a_root);
+			}
 			auto describe = [&](RE::NiAVObject* a_o, const char* a_what, bool& a_bad) {
 				const auto& b = a_o->worldBound;
 				const auto& c = b.center;
@@ -1241,6 +1308,11 @@ namespace FO4SMP::PlayerPhysics
 				}
 				logger::warn("Player visibility: {}:{} farthest simulated bone node {} at {:.0f} units from the root",
 					bad ? "bounds turned odd" : "bounds normal again", line, farthestName, farthest);
+				static int s_dumps = 0;
+				if (bad && s_dumps < 3) {
+					++s_dumps;
+					DumpHeadAndStrays(a_root);
+				}
 			}
 			s_odd = bad;
 		}
