@@ -11,8 +11,8 @@ exception (LICENSE.txt, EXCEPTIONS.txt).
 | | |
 |---|---|
 | Fallout 4 | **1.11.240** (Steam). Other versions: not supported; the plugin refuses to load on them. |
-| F4SE | The build for 1.11.240. |
-| Address Library for F4SE Plugins | With `version-1-11-240-0.bin`. |
+| F4SE | The build for 1.11.240 (tested: 0.7.9). |
+| Address Library for F4SE Plugins | With `version-1-11-240-0.bin`. Without it F4SE disables FO4SMP ("address library needs to be updated" in f4se.log). |
 | Mod Configuration Menu | Optional, for the settings page. |
 | Something with SMP physics | A body, outfit, head or hair whose mesh names a physics XML: A-Body (male), True Wasteland Body SMP, SMP Head, Modular SMP Hairstyles... FO4SMP brings no meshes or XMLs of its own. |
 

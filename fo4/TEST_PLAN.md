@@ -20,8 +20,8 @@ Status column: as of the last build tested (run 45, CommonLibF4 alandtse). **Eve
 
 | # | Area | Steps | Expected (log) | Status |
 |---|---|---|---|---|
-| 1 | Installation | Install the release archive with MO2 into an empty mod; list its files. | `F4SE\Plugins\FO4SMP.dll`, `F4SE\Plugins\FO4SMP\` (configs, schema, docs, licences), `MCM\Config\FO4SMP\`, `Scripts\DynamicHDT.pex` and `.psc`. Nothing else. | Partial: archive contents checked (run 47); MO2 install not yet |
-| 2 | Dependency checks | Start with Address Library removed; then with FO4 Faster HDT-SMP enabled too. | "couldn't read ... version-1-11-240-0.bin" and no hooks; "Another SMP plugin is loaded". | Not run |
+| 1 | Installation | Install the release archive with MO2 into an empty mod; list its files. | `F4SE\Plugins\FO4SMP.dll`, `F4SE\Plugins\FO4SMP\` (configs, schema, docs, licences), `MCM\Config\FO4SMP\`, `Scripts\DynamicHDT.pex` and `.psc`. Nothing else. | Partial: archive contents checked (run 47); installed in MO2 as `FO4SMP-V1`, F4SE sees version 01000000 (run 48); play from it in runs 49-50 |
+| 2 | Dependency checks | Start with Address Library removed; then with FO4 Faster HDT-SMP enabled too. | "F4SE: plugin FO4SMP.dll ... disabled, address library needs to be updated" in f4se.log: F4SE refuses the plugin before FO4SMP runs; the game starts. With another SMP plugin: "Another SMP plugin is loaded". | Partial: missing Address Library passes (run 48); other SMP plugin not run |
 | 3 | Runtime check | Start on another runtime (if available). | F4SE refuses the plugin, or "Unsupported runtime ... Not loading." | Not run |
 | 4 | Plugin loading | Start the game to the main menu. | "Address check: N OK, M hooked by another plugin, 0 failed", both hooks installed, "FO4SMP loaded", console report. | Pass (runs 1-45) |
 | 5 | Papyrus | Load a save. Call a DynamicHDT function (4Stim scene start). | "DynamicHDT: 7 of 7 script functions bound"; `SwapPhysicsFile` lines; the body rebuilt with the new XML. | Pass (runs 44-45) |
