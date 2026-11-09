@@ -11,8 +11,8 @@ project(
 	LANGUAGES CXX
 )
 
-# Release names are V1, V2, V3...: FO4SMP_RELEASE_NAME is what the log, the console and the archive show. The
-# numeric version above is what F4SE reads (major = the release number).
+# Release names are V1, V2, V3...; a fix after a release adds .1, .2... (V1.1, V1.2). FO4SMP_RELEASE_NAME is what the
+# log, the console and the archive show. The numeric version above is what F4SE reads: V1 = 1.0.0, V1.1 = 1.1.0, V2 = 2.0.0.
 set(FO4SMP_RELEASE_NAME "V1")
 
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)

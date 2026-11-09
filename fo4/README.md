@@ -53,7 +53,7 @@ cmake --build --preset release
 - `FO4SMP_FALLOUT4_DIR` (optional): the game folder with the Creation Kit's `Papyrus Compiler` and
   `Data\Scripts\Source` (with `Base`); compiles `DynamicHDT.pex`, copied into the deploy folder's `Scripts`.
 - Release archive: `cmake --build --preset release --target release_zip` writes `build/release/FO4SMP-V<n>.zip`
-  (mod folder layout) and `FO4SMP-V<n>-pdb.zip`. Releases are V1, V2...: `FO4SMP_RELEASE_NAME` in `CMakeLists.txt`.
+  (mod folder layout) and `FO4SMP-V<n>-pdb.zip`. Releases are V1, V2...; a fix after a release adds .1 (V1.1): set `FO4SMP_RELEASE_NAME` and the numeric `VERSION` (1.1.0) in `CMakeLists.txt`.
 
 The first configure builds FSMP's patched Bullet, oneTBB and spdlog (with `wchar`) through vcpkg.
 
