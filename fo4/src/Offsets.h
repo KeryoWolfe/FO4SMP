@@ -59,6 +59,11 @@ namespace FO4SMP::Offsets
 	// update" (run 39), so the pause is read from the timer.
 	inline constexpr REL::ID BSTimer_Singleton{ 2703179 };
 
+	// UI* (F4SE 1.11.240 GameMenus.cpp g_ui, 0x030E8930 = Address Library 4796314; 632 references in the executable).
+	// UI::numPauseGame at +0x1E0 (F4SE GameMenus.h; CommonLibF4 UI::menuMode, same offset): the count of open menus that
+	// pause the game, which F4SE's own input hooks test. The timer's delta didn't drop in the pause menu (run 40).
+	inline constexpr REL::ID UI_Singleton{ 4796314 };
+
 	// Armor attach (milestone 4). BipedAnim::ApplySkinnedObjects calls BipedAnim::AttachSkinnedObject from two
 	// places (1.11.240: +0x35DDB2 and +0x35DDDB, inside a chained chunk of the function); both are `call rel32`.
 	// FO4SMP hooks those calls, not the function: LooksMenu (f4ee.dll) detours the function itself, and a call

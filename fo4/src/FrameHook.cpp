@@ -61,13 +61,16 @@ namespace FO4SMP::FrameHook
 			const float delta = *reinterpret_cast<const float*>(timer.address() + 0x10);
 			const float realDelta = *reinterpret_cast<const float*>(timer.address() + 0x14);
 			const auto disabled = *reinterpret_cast<const std::uint32_t*>(timer.address() + 0x38);
-			const bool paused = !update || freezeTime || disabled > 0 || !(delta > 0.0f);
+			static REL::Relocation<std::uintptr_t*> ui{ Offsets::UI_Singleton };
+			const auto uiObject = *ui;
+			const std::uint32_t pauseMenus = uiObject ? *reinterpret_cast<const std::uint32_t*>(uiObject + 0x1E0) : 0;
+			const bool paused = !update || freezeTime || disabled > 0 || !(delta > 0.0f) || pauseMenus > 0;
 			static bool s_paused = false;
 			static int s_logged = 0;
 			if (paused != s_paused && s_logged < 60) {
 				++s_logged;
-				logger::info("Frame step: {} (game systems update {}, freeze time {}, timer delta {:.4f} s, real {:.4f} s, timer disabled {})",
-					paused ? "paused" : "resumed", update, freezeTime, delta, realDelta, disabled);
+				logger::info("Frame step: {} (game systems update {}, freeze time {}, timer delta {:.4f} s, real {:.4f} s, timer disabled {}, pausing menus {})",
+					paused ? "paused" : "resumed", update, freezeTime, delta, realDelta, disabled, pauseMenus);
 			}
 			s_paused = paused;
 			return paused;
