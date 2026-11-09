@@ -2,6 +2,7 @@
 
 #include "Console.h"
 #include "PlayerPhysics.h"
+#include "game/Fo4Nodes.h"
 
 // The script functions are written against the virtual machine F4SE hands over, not CommonLibF4's binding templates:
 // those find the game's VM through GameVM's singleton (ID 2689134) and a base object name (ID 648543), which aren't in
@@ -26,15 +27,54 @@ namespace FO4SMP::Papyrus
 			using Args = std::vector<const BS::Variable*>;
 			using Body = std::function<void(const Args&, BS::Variable&)>;
 
+			// Allocated from the game's heap, not through IFunction's operator new (RE::malloc; see Fo4Nodes.h).
+			[[nodiscard]] static void* operator new(std::size_t a_size)
+			{
+				auto* memory = hdt::fo4::GameAllocate(a_size);
+				if (!memory) {
+					throw std::bad_alloc();
+				}
+				return memory;
+			}
+			static void operator delete(void* a_memory) { hdt::fo4::GameFree(a_memory); }
+
 			Native(std::string_view a_name, const std::vector<std::pair<std::string, BS::TypeInfo>>& a_params, BS::TypeInfo a_return, Body a_body) :
-				NativeFunctionBase("DynamicHDT"sv, a_name, static_cast<std::uint16_t>(a_params.size()), true, false),
+				NativeFunctionBase("DynamicHDT"sv, a_name, 0, true, false),  // 0: the base would allocate the table with RE::malloc
 				_body(std::move(a_body))
 			{
-				for (std::size_t i = 0; i < a_params.size(); ++i) {
-					descTable.entries[i].first = a_params[i].first;
-					descTable.entries[i].second = a_params[i].second;
+				// The parameter table, on the game's heap (twice the count, as CommonLibF4's VDescTable allocates).
+				using Entry = BS::Internal::VDescTable::value_type;
+				const auto count = static_cast<std::uint16_t>(a_params.size());
+				if (count > 0) {
+					auto* entries = static_cast<Entry*>(hdt::fo4::GameAllocate(sizeof(Entry) * count * 2));
+					if (!entries) {
+						throw std::bad_alloc();
+					}
+					for (std::size_t i = 0; i < count * 2u; ++i) {
+						new (entries + i) Entry();
+					}
+					for (std::size_t i = 0; i < count; ++i) {
+						entries[i].first = a_params[i].first;
+						entries[i].second = a_params[i].second;
+					}
+					descTable.entries = entries;
+					descTable.paramCount = count;
+					descTable.totalEntries = count;
 				}
 				retType = a_return;
+			}
+
+			~Native() override
+			{
+				// The table is ours (game heap, placement-constructed): the base's delete[] mustn't see it.
+				using Entry = BS::Internal::VDescTable::value_type;
+				if (descTable.entries) {
+					for (std::size_t i = 0; i < descTable.paramCount * 2u; ++i) {
+						descTable.entries[i].~Entry();
+					}
+					hdt::fo4::GameFree(descTable.entries);
+					descTable.entries = nullptr;
+				}
 			}
 
 			bool HasStub() const override { return static_cast<bool>(_body); }

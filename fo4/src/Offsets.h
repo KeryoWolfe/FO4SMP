@@ -70,6 +70,7 @@ namespace FO4SMP::Offsets
 	// allocates NiNodes as Allocate(&mainHeap, 0x140, 0x10, true) then calls that constructor (120 call sites).
 	inline constexpr REL::ID MainHeap{ 4807654 };
 	inline constexpr REL::ID HeapAllocate{ 2267872 };
+	inline constexpr REL::ID HeapFree{ 2267874 };  // Heap::Free(buffer, aligned), F4SE 1.11.240 0x01658240
 	inline constexpr REL::ID NiNodeCtor{ 2269948 };
 
 	// TESDataHandler* (F4SE 1.11.240 g_dataHandler 0x030E7100 = ID 4796135); its form arrays start at +0x68

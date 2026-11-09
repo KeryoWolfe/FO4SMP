@@ -22,4 +22,23 @@ namespace hdt::fo4
 		node->world = a_local;
 		return node;
 	}
+
+	void* GameAllocate(std::size_t a_size)
+	{
+		using Allocate_t = void*(void* a_heap, std::size_t a_size, std::size_t a_alignment, bool a_aligned);
+		static REL::Relocation<std::uintptr_t> heap{ FO4SMP::Offsets::MainHeap };
+		static REL::Relocation<Allocate_t*> allocate{ FO4SMP::Offsets::HeapAllocate };
+		return allocate(reinterpret_cast<void*>(heap.address()), a_size, 0, false);
+	}
+
+	void GameFree(void* a_memory)
+	{
+		if (!a_memory) {
+			return;
+		}
+		using Free_t = void(void* a_heap, void* a_memory, bool a_aligned);
+		static REL::Relocation<std::uintptr_t> heap{ FO4SMP::Offsets::MainHeap };
+		static REL::Relocation<Free_t*> release{ FO4SMP::Offsets::HeapFree };
+		release(reinterpret_cast<void*>(heap.address()), a_memory, false);
+	}
 }
