@@ -151,12 +151,23 @@ namespace FO4SMP::Papyrus
 
 		// --- registration ---
 
+		void Flush()
+		{
+			if (auto log = spdlog::default_logger()) {
+				log->flush();
+			}
+		}
+
 		bool Register(BS::IVirtualMachine* a_vm)
 		{
 			g_vm = a_vm;
-			auto objectType = [&](const char* a_name) -> BS::TypeInfo {
+			logger::info("DynamicHDT: the VM asks for native functions; looking up the Actor and ArmorAddon types");
+			Flush();
+			// By form type, as F4SE's own registrations and CommonLibF4's templates do. Run 43: looking the types up by
+			// name here, during the VM's start, crashed it in BSVMLoadTask::PostProcess.
+			auto objectType = [&](RE::ENUM_FORM_ID a_type, const char* a_name) -> BS::TypeInfo {
 				RE::BSTSmartPointer<BS::ObjectTypeInfo> info;
-				if (!a_vm->GetScriptObjectType(RE::BSFixedString(a_name), info) || !info) {
+				if (!a_vm->GetScriptObjectType(static_cast<std::uint32_t>(a_type), info) || !info) {
 					logger::error("DynamicHDT: the script type {} isn't known to the VM", a_name);
 					return BS::TypeInfo(RawType::kObject);
 				}
@@ -164,8 +175,10 @@ namespace FO4SMP::Papyrus
 				s_keep.push_back(info);
 				return BS::TypeInfo(info.get());
 			};
-			const auto actor = objectType("Actor");
-			const auto armorAddon = objectType("ArmorAddon");
+			const auto actor = objectType(RE::ENUM_FORM_ID::kACHR, "Actor");
+			const auto armorAddon = objectType(RE::ENUM_FORM_ID::kARMA, "ArmorAddon");
+			logger::info("DynamicHDT: types found; binding");
+			Flush();
 			const BS::TypeInfo string{ RawType::kString };
 			const BS::TypeInfo boolean{ RawType::kBool };
 			const BS::TypeInfo strings{ RawType::kArrayString };
@@ -280,6 +293,7 @@ namespace FO4SMP::Papyrus
 				}));
 
 			logger::info("DynamicHDT: {} of 7 script functions bound", bound);
+			Flush();
 			return true;
 		}
 
@@ -354,6 +368,11 @@ namespace FO4SMP::Papyrus
 
 	bool Install()
 	{
+		// Diagnostic switch: with F4SE\Plugins\FO4SMP\nopapyrus.txt present, the script functions aren't registered.
+		if (std::error_code ec; std::filesystem::exists("Data/F4SE/Plugins/FO4SMP/nopapyrus.txt", ec)) {
+			logger::warn("DynamicHDT: nopapyrus.txt present; script functions not registered");
+			return false;
+		}
 		const auto* papyrus = F4SE::GetPapyrusInterface();
 		if (!papyrus || !papyrus->Register(Register)) {
 			logger::error("DynamicHDT: F4SE's Papyrus interface isn't available; the script functions aren't registered");
