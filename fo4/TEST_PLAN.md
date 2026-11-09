@@ -43,8 +43,8 @@ Status column: as of the last build tested (run 45, CommonLibF4 alandtse). **Eve
 
 ## Failure paths
 
-| Case | How | Expected |
-|---|---|---|
-| Physics XML missing or broken | Point an override at a missing or malformed XML. | "built nothing", validator problems; the actor keeps its rest shape; no crash. |
-| Missing schema | Remove `hdtSMP64.xsd`. | "Validator: no schema ...", once; physics unaffected. |
-| Script functions off | Create `F4SE\Plugins\FO4SMP\nopapyrus.txt`. | "nopapyrus.txt present"; the game runs; scripts calling DynamicHDT get errors in the Papyrus log only. |
+| Case | How | Expected | Status |
+|---|---|---|---|
+| Physics XML missing or broken | Point an override at a missing or malformed XML. | "built nothing", validator problems; the actor keeps its rest shape; no crash. | Pass (run 49) |
+| Missing schema | Remove `hdtSMP64.xsd`. | "Validator: no schema ...", once; physics unaffected. | Pass (run 49) |
+| Script functions off | Create `F4SE\Plugins\FO4SMP\nopapyrus.txt`. | "nopapyrus.txt present"; the game runs; scripts calling DynamicHDT get errors in the Papyrus log only. | Pass (run 49) |
