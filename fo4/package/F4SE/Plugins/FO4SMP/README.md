@@ -1,4 +1,4 @@
-# FO4SMP 0.9.0 (beta)
+# FO4SMP V1
 
 Faster HDT-SMP (FSMP), the Skyrim skinned-mesh physics plugin, ported to Fallout 4. It simulates the physics that
 bodies, outfits, heads and hair describe in an HDT-SMP physics XML: soft bodies, genitals, breasts, hair, cloth.

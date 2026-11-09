@@ -16,7 +16,7 @@ A row passes only on an in-game test of the build being released; a compile or a
 ## Matrix
 
 Status column: as of the last build tested (run 45, CommonLibF4 alandtse). **Every row is to be run again on the
-`fo4smp/combined` build** (0.9.0), the build being released.
+`fo4smp/combined` build** (V1), the build being released.
 
 | # | Area | Steps | Expected (log) | Status |
 |---|---|---|---|---|

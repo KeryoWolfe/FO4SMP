@@ -7,9 +7,13 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
 	FO4SMP
-	VERSION 0.9.0
+	VERSION 1.0.0
 	LANGUAGES CXX
 )
+
+# Release names are V1, V2, V3...: FO4SMP_RELEASE_NAME is what the log, the console and the archive show. The
+# numeric version above is what F4SE reads (major = the release number).
+set(FO4SMP_RELEASE_NAME "V1")
 
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
 	message(FATAL_ERROR "FO4SMP is 64-bit only.")
@@ -201,8 +205,8 @@ endif()
 # folder (configs, schema, licences, readme), MCM\Config\FO4SMP, Scripts\DynamicHDT.pex (needs FO4SMP_FALLOUT4_DIR)
 # and Scripts\Source\User\DynamicHDT.psc. The PDB goes in a separate archive. Source: the GitHub repository (GPL-3).
 set(_stage "${CMAKE_CURRENT_BINARY_DIR}/release-stage")
-set(_zip "${CMAKE_CURRENT_BINARY_DIR}/FO4SMP-${PROJECT_VERSION}.zip")
-set(_pdbzip "${CMAKE_CURRENT_BINARY_DIR}/FO4SMP-${PROJECT_VERSION}-pdb.zip")
+set(_zip "${CMAKE_CURRENT_BINARY_DIR}/FO4SMP-${FO4SMP_RELEASE_NAME}.zip")
+set(_pdbzip "${CMAKE_CURRENT_BINARY_DIR}/FO4SMP-${FO4SMP_RELEASE_NAME}-pdb.zip")
 set(_release_commands
 	COMMAND "${CMAKE_COMMAND}" -E rm -rf "${_stage}"
 	COMMAND "${CMAKE_COMMAND}" -E make_directory "${_stage}/mod/F4SE/Plugins" "${_stage}/pdb/F4SE/Plugins"

@@ -1,10 +1,10 @@
 # Changelog
 
-FO4SMP, Faster HDT-SMP for Fallout 4. Dates are when a change was tested in game (`TEST_RESULTS.md`).
+FO4SMP, Faster HDT-SMP for Fallout 4. Releases are numbered V1, V2, V3... Dates are when a change was tested in game (`TEST_RESULTS.md`).
 
-## 0.9.0 (beta, not yet released)
+## V1 (not yet released)
 
-First version meant for others. Fallout 4 1.11.240 (Steam) only.
+First release. Fallout 4 1.11.240 (Steam) only.
 
 ### Physics
 

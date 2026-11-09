@@ -9,7 +9,7 @@ check) is used from the upstream tree unchanged apart from one compile switch an
 - Addresses and how each was verified: `ADDRESSES.md` (plus `src/Offsets.h`, checked by `src/AddressCheck.cpp` at load).
 - Plan and audit: the claude.ai project doc `FSMP_FO4_PORT.md` and `../FO4_PORT.md`.
 
-## State: 0.9.0 beta (milestones 1-5 done)
+## State: V1 release candidate (milestones 1-5 done)
 
 | Milestone | |
 |---|---|
@@ -52,8 +52,8 @@ cmake --build --preset release
 - `FO4SMP_DEPLOY_DIR` (optional): each build copies the DLL, PDB and `package/` there.
 - `FO4SMP_FALLOUT4_DIR` (optional): the game folder with the Creation Kit's `Papyrus Compiler` and
   `Data\Scripts\Source` (with `Base`); compiles `DynamicHDT.pex`, copied into the deploy folder's `Scripts`.
-- Release archive: `cmake --build --preset release --target release_zip` writes `build/release/FO4SMP-<version>.zip`
-  (mod folder layout) and `FO4SMP-<version>-pdb.zip`.
+- Release archive: `cmake --build --preset release --target release_zip` writes `build/release/FO4SMP-V<n>.zip`
+  (mod folder layout) and `FO4SMP-V<n>-pdb.zip`. Releases are V1, V2...: `FO4SMP_RELEASE_NAME` in `CMakeLists.txt`.
 
 The first configure builds FSMP's patched Bullet, oneTBB and spdlog (with `wchar`) through vcpkg.
 
