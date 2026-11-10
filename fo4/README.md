@@ -1,6 +1,7 @@
 # FO4SMP (developer notes)
 
-Faster HDT-SMP (FSMP) ported to Fallout 4 1.11.240 (Steam) with F4SE and Address Library. This folder holds the
+Faster HDT-SMP (FSMP) ported to Fallout 4 with F4SE and Address Library: one DLL for 1.10.163 (OG), 1.10.984 (NG) and
+1.11.240 (AE). This folder holds the
 Fallout 4 build; FSMP's physics core (`../src/hdtSkinnedMesh`, XML reader, configs, patterns, the validator's XSD
 check) is used from the upstream tree unchanged apart from one compile switch and the schema path.
 
@@ -9,7 +10,7 @@ check) is used from the upstream tree unchanged apart from one compile switch an
 - Addresses and how each was verified: `ADDRESSES.md` (plus `src/Offsets.h`, checked by `src/AddressCheck.cpp` at load).
 - Plan and audit: the claude.ai project doc `FSMP_FO4_PORT.md` and `../FO4_PORT.md`.
 
-## State: V1 release candidate (milestones 1-5 done)
+## State: V1 released; V1.1 adds OG and NG
 
 | Milestone | |
 |---|---|
@@ -18,7 +19,8 @@ check) is used from the upstream tree unchanged apart from one compile switch an
 | 3. A-Body on the player | FSMP's system builder ported (`src/game/Fo4System.cpp`), skin data from `BSSkin::Instance` / `BoneData` and the vertex buffer, outfit-added bones placed from the NIF. |
 | 4. Armor and actors | Call-site hooks on `BipedAnim::AttachSkinnedObject`; NPC selection by distance with hysteresis, placement tier, staged quarantine of exploding NPCs, culling by camera view, reset on save load. |
 | 5. Heads, hair, scripts, settings | Per-actor face bone nodes and head part physics (SMP Head, SMP hair), BA2 reading, DynamicHDT natives with co-save persistence, MCM page, XSD validation. |
-| 6. Release | This document set, quiet logging (verbose switch), release archive target. Open: an MSVC build of the `fo4smp/combined` CommonLibF4, the test plan's full pass. |
+| 6. Release | V1 (AE): this document set, quiet logging (verbose switch), release archive target, the test plan's pass. |
+| 7. OG and NG (V1.1) | Every ID as `{ OG, NG, AE }` (`src/Offsets.h`, `ADDRESSES.md` "OG and NG"); the address check reads the running game's Address Library file and checks OG's own first bytes; hook call sites found at load from the unwind table (`src/CodeScan.*`); `F4SEPlugin_Query` for OG's F4SE. |
 
 Open problems: penis-vs-legs collision instability (stopgap override), physics step cost with dozens of NPCs.
 
@@ -26,7 +28,8 @@ Open problems: penis-vs-legs collision instability (stopgap override), physics s
 
 | Path | |
 |---|---|
-| `src/main.cpp` | Plugin entry, logging, F4SE messages (game data ready, save loading). |
+| `src/main.cpp` | Plugin entry (F4SEPlugin_Version for NG/AE F4SE, F4SEPlugin_Query for OG's), logging, F4SE messages. |
+| `src/AddressCheck.*`, `src/CodeScan.*` | Every address checked at load for the running runtime; call sites found in the game's code. |
 | `src/FrameHook.*` | Main loop hook, pause detection, step and timing report. |
 | `src/AttachHook.*` | Armor attach call sites; per-actor, per-slot physics attach records. |
 | `src/PlayerPhysics.*` | Actors: selection, building, placement, faces, culling, explosions, DynamicHDT back end, settings. |

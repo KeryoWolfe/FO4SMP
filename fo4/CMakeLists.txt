@@ -1,19 +1,19 @@
 cmake_minimum_required(VERSION 3.25)
 
-# FO4SMP: Faster HDT-SMP for Fallout 4 (1.11.240).
+# FO4SMP: Faster HDT-SMP for Fallout 4 (1.10.163 OG, 1.10.984 NG, 1.11.240 AE).
 # Milestone 1: the plugin loads, logs, checks the addresses it will hook, links FSMP's physics core,
 # reads configs.json and defaultBBPs.xml, steps an empty physics world once and reports in the
 # console. Milestone 2: one hook steps the physics world every frame (see FO4_PORT.md).
 
 project(
 	FO4SMP
-	VERSION 1.0.0
+	VERSION 1.1.0
 	LANGUAGES CXX
 )
 
 # Release names are V1, V2, V3...; a fix after a release adds .1, .2... (V1.1, V1.2). FO4SMP_RELEASE_NAME is what the
 # log, the console and the archive show. The numeric version above is what F4SE reads: V1 = 1.0.0, V1.1 = 1.1.0, V2 = 2.0.0.
-set(FO4SMP_RELEASE_NAME "V1")
+set(FO4SMP_RELEASE_NAME "V1.1")
 
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
 	message(FATAL_ERROR "FO4SMP is 64-bit only.")
@@ -75,6 +75,7 @@ add_library(
 	SHARED
 	src/main.cpp
 	src/AddressCheck.cpp
+	src/CodeScan.cpp
 	src/AddressCheck.h
 	src/AttachHook.cpp
 	src/AttachHook.h

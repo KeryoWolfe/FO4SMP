@@ -1,4 +1,7 @@
-# Fallout 4 1.11.240 addresses
+# Fallout 4 addresses (OG 1.10.163, NG 1.10.984, AE 1.11.240)
+
+V1 supported AE only; the AE sections below are how its addresses were found. **V1.1** added OG and NG: see
+"OG and NG" at the end. `src/Offsets.h` holds every ID as `{ OG, NG, AE }`.
 
 Found 7 November 2026 by matching functions between two executables, both from the owner's machine:
 
@@ -73,6 +76,57 @@ Why the earlier search for armor attach failed: in 1.11.240 the function no long
 | Game shutdown | `0x27D4DF0` (ID 213588) | The signature matches a 13-byte chunk in 1.11.240 (`0x2180C50`): not trusted. |
 | Slow-time multiplier | `0x5B5B6D0` (data) | The 2020 port marks it "maybe?"; the signature doesn't match. |
 | FaceGen bone limit | `0x06935DF` | A Skyrim engine fix; signature doesn't match. Probably not needed. |
+
+## OG and NG (V1.1, 10 November 2026)
+
+Files: the GOG 1.10.163 executable (above), Address Library `version-1-10-163-0.bin`; the Steam 1.10.984 executable
+(FileVersion 1.10.984.0, SHA-1 `2cabde48...`) and Address Library `version-1-10-984-0.bin` (Nexus file 1715667020);
+F4SE's source at 0.6.23 (ianpatt/f4se `4d7ba86`, runtime 1.10.163) and 0.7.2 (`7c1bf3e`, 1.10.984).
+
+**The NG executable's code is encrypted on disk** (SteamStub: `.text` entropy 8.0, a `.bind` section). FO4SMP's
+work does not remove that. Its headers, unwind table (`.pdata`, `.rdata`) and data are readable, so NG was checked
+without disassembly, and the in-game checks cover the rest (below).
+
+### OG
+
+| What | OG ID | How |
+|---|---|---|
+| Functions in the table (`kFunctions`) | as in `Offsets.h` | V1's matching (above) already had each OG ID. Their first 8 bytes in the 1.10.163 exe are now in the table and checked in game on OG. |
+| `ConsoleLog::Print` (variadic) | **1065300** | Not 799546 (Bingle's and CommonLibF4's "Print"): 799546 is `Print(format, va_list)`. 1065300 spills rdx/r8/r9 and calls it; 762 of the 1,367 code references to the console singleton (689441) are followed by a call to 1065300. AE merged the two into 2248591. |
+| Heap allocate/free, NiNode constructor, resource stream ctor/dtor/read/IsValid, LookupREFRByHandle | 652767, 1582181, 20633, 1198116, 1516202, 424286, 1502562, 542603 | F4SE 0.6.23's addresses, looked up in the OG database; each is a function start in the exe (IsValid, a leaf, has no unwind entry) with the first bytes in the table. |
+| g_player, g_ui, g_playerCamera, g_mainHeap, g_dataHandler | 303410, 548587, 1171980, 42693, 711558 | F4SE 0.6.23's addresses; the last four equal CommonLibF4's OG IDs. |
+| `Main::Run`, the call to `Main::OnIdle` | 1125396, +0xBB | The only caller of OnIdle (633524) in the exe; CommonLibF4's `Main::Run` OG ID agrees. |
+| QGameSystemsShouldUpdate, BSTimer | 779552, 1256126 | CommonLibF4's; 779552 is the byte before QGameDataLoaded (1004331), as in AE. BSTimer: delta +0x10 and real delta +0x14 in both (267/269 and 86/88 code references); `disableCounter` +0x38 in OG and NG, +0x48 in AE (CommonLibF4 `BSTimer::QDisableCounter`). |
+| Armor attach call sites | ApplySkinnedObjects +0x182; helper 973253 +0x62 | OG has three calls to AttachSkinnedObject: in ApplySkinnedObjects (parent given), in the helper it calls for an object's children (parent null: AE inlines this, its first call site), and in a functor nobody calls directly (no AE counterpart; not hooked). |
+
+Layouts FO4SMP reads are the same in OG (F4SE 0.6.23's headers, CommonLibF4): BipedAnim (slots of 0x58 from +0x10, the
+model at +0x20 of each, `actorRef` +0x1E50: OG's AttachSkinnedObject does `add rcx, 0x1E50`), `loadedData` +0xF0,
+UI menu count +0x1E0, the camera node +0x20, the data handler's head part array +0x1D0, BGSHeadPart +0x38/+0xA0/+0x170,
+NiNode 0x140 bytes, the skin instance, and BSGeometry +0x148: OG's `BSGeometryData` {vertexDesc, vertex data*, triangle
+data*} with the CPU copy at +0x08 of each matches AE's `BSGraphics::TriShape` {vertexDesc, VertexBuffer*,
+IndexBuffer*} with `pData` at +0x08. BSDynamicTriShape +0x170/+0x180 in both.
+
+### NG
+
+- **IDs.** Address Library 1.10.984 has every NG/AE function ID FO4SMP uses, and for each one F4SE 0.7.2 names, at
+  F4SE's address (heap, NiNode constructor, resource stream, LookupREFRByHandle, g_player). The AE-only data IDs
+  (47xxxxx) have NG IDs from F4SE 0.7.2 that equal CommonLibF4's (UI 2689028, camera 2688801, data handler 2688883,
+  heap 2688720, console 2690148); `Main::Run` NG 2718225 (CommonLibF4).
+- **Sizes.** From the unwind table: 27 of the 30 functions have the same total size and number of chunks in NG as
+  in AE (`tools/ngsize.py`), so their code is very likely the same. The three that differ: `Main::Run`, `Main::OnIdle`,
+  `AttachSkinnedObject`.
+- **In game.** NG's first bytes aren't known, so the address check compares AE's and, when they differ, accepts the
+  address only if NG's unwind table has a function starting there. The two hooks find their call sites by scanning
+  the caller's code for a call to the verified target (`src/CodeScan.cpp`), so a wrong ID for `Main::Run`, OnIdle,
+  ApplySkinnedObjects or AttachSkinnedObject shows as "found 0 calls" and the hook isn't installed.
+
+### Call sites found at load (all runtimes)
+
+`CodeScan` reads the executable's unwind table in memory, collects a function's chunks (following chained unwind
+info) and lists every `E8 rel32` in them that lands on the target. Offline, the same algorithm (`tools/chain.py`) finds
+exactly AE's +0x192/+0x1BB (ApplySkinnedObjects) and +0xCB (Main::Run), V1's fixed offsets, and OG's +0x182, +0x62
+(helper) and +0xBB. When a scan finds nothing (another plugin redirected the call first), the known OG/AE offsets are
+used, as in V1.
 
 ## Reproducing
 

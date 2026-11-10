@@ -1,5 +1,6 @@
 #include "AddressCheck.h"
 
+#include "CodeScan.h"
 #include "Offsets.h"
 
 namespace FO4SMP::AddressCheck
@@ -15,14 +16,16 @@ namespace FO4SMP::AddressCheck
 
 		std::uintptr_t Base() noexcept { return REX::FModule::GetExecutingModule().GetBaseAddress(); }
 
-		// The Address Library database for 1.11.240 (Data\F4SE\Plugins\version-1-11-240-0.bin: a count, then
-		// id/offset pairs sorted by id), read here so a missing id can be reported: CommonLibF4's own lookup
-		// (commonlib-shared) stops the game on a missing id, by design.
+		// The running game's Address Library database (Data\F4SE\Plugins\version-1-11-240-0.bin and so on: a count,
+		// then id/offset pairs sorted by id; the same format for OG, NG and AE), read here so a missing id can be
+		// reported: CommonLibF4's own lookup (commonlib-shared) stops the game on a missing id, by design.
 		const std::vector<std::pair<std::uint64_t, std::uint64_t>>& Database()
 		{
 			static const auto table = [] {
 				std::vector<std::pair<std::uint64_t, std::uint64_t>> out;
-				std::ifstream file("Data/F4SE/Plugins/version-1-11-240-0.bin", std::ios::binary);
+				const auto version = REX::FModule::GetExecutingModule().GetFileVersion();
+				const auto name = std::format("version-{}.bin", version.string("-"sv));
+				std::ifstream file("Data/F4SE/Plugins/" + name, std::ios::binary);
 				std::uint64_t count = 0;
 				if (file.read(reinterpret_cast<char*>(&count), sizeof(count)) && count < 10'000'000) {
 					out.resize(static_cast<std::size_t>(count));
@@ -31,11 +34,16 @@ namespace FO4SMP::AddressCheck
 					}
 				}
 				if (out.empty()) {
-					logger::error("Address check: couldn't read Data\\F4SE\\Plugins\\version-1-11-240-0.bin (Address Library)");
+					logger::error("Address check: couldn't read Data\\F4SE\\Plugins\\{} (Address Library)", name);
 				}
 				return out;
 			}();
 			return table;
+		}
+
+		std::string_view RuntimeName() noexcept
+		{
+			return REX::FModule::IsRuntimeOG() ? "1.10.163"sv : REX::FModule::IsRuntimeNG() ? "1.10.984"sv : "1.11.240"sv;
 		}
 
 		// Resolves an Address Library ID; 0 when the ID is missing from the database for this runtime.
@@ -135,8 +143,15 @@ namespace FO4SMP::AddressCheck
 					a_name, a_id.id(), a_address - Base(), owner.empty() ? "another plugin"s : owner);
 				return Outcome::kHooked;
 			}
-			logger::error("Address check: {} (ID {}) at +{:07X} FAILED: code starts {} (expected {} bytes from 1.11.240)",
-				a_name, a_id.id(), a_address - Base(), Hex(a_address, a_expected.size()), a_expected.size());
+			// NG: the expected bytes are AE's (NG's code is encrypted on disk, so its own weren't available). A function
+			// that starts where NG's unwind table says one starts is the right place, its first bytes just differ.
+			if (REX::FModule::IsRuntimeNG() && CodeScan::IsFunctionStart(a_address)) {
+				logger::info("Address check: {} (ID {}) at +{:07X} OK: a function starts there (unwind table); its first bytes {} differ from 1.11.240's{}",
+					a_name, a_id.id(), a_address - Base(), Hex(a_address, a_expected.size()), a_note);
+				return Outcome::kOK;
+			}
+			logger::error("Address check: {} (ID {}) at +{:07X} FAILED: code starts {} (expected {} bytes from {})",
+				a_name, a_id.id(), a_address - Base(), Hex(a_address, a_expected.size()), a_expected.size(), REX::FModule::IsRuntimeOG() ? "1.10.163"sv : "1.11.240"sv);
 			return Outcome::kFailed;
 		}
 
@@ -238,15 +253,18 @@ namespace FO4SMP::AddressCheck
 			Count(result, address != 0 ? Outcome::kOK : Outcome::kFailed);
 		}
 
-		// 5. The function table: each ID must resolve and its code start with the bytes seen in 1.11.240.
+		// 5. The function table: each ID must resolve and its code start with the bytes seen in 1.10.163 (OG) or 1.11.240.
 		for (const auto& fn : Offsets::kFunctions) {
-			const REL::ID id{ fn.id };
 			std::array<std::uint16_t, 8> head{};
-			std::ranges::copy(fn.head, head.begin());
-			Count(result, CheckCode(fn.name, id, Resolve(id), head, fn.strong ? ""sv : " (weak match)"sv));
+			if (REX::FModule::IsRuntimeOG()) {
+				head = fn.headOG;
+			} else {
+				std::ranges::copy(fn.head, head.begin());
+			}
+			Count(result, CheckCode(fn.name, fn.id, Resolve(fn.id), head, fn.strong ? ""sv : " (weak match)"sv));
 		}
 
-		logger::info("Address check: {} OK, {} hooked by another plugin, {} failed", result.ok, result.hooked, result.failed);
+		logger::info("Address check ({}): {} OK, {} hooked by another plugin, {} failed", RuntimeName(), result.ok, result.hooked, result.failed);
 		return result;
 	}
 }

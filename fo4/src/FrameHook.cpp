@@ -1,6 +1,7 @@
 #include "FrameHook.h"
 #include "game/Fo4Bone.h"
 
+#include "CodeScan.h"
 #include "Offsets.h"
 #include "PhysicsWorld.h"
 #include "PlayerPhysics.h"
@@ -61,7 +62,9 @@ namespace FO4SMP::FrameHook
 			const bool update = *shouldUpdate;
 			const float delta = *reinterpret_cast<const float*>(timer.address() + 0x10);
 			const float realDelta = *reinterpret_cast<const float*>(timer.address() + 0x14);
-			const auto disabled = *reinterpret_cast<const std::uint32_t*>(timer.address() + 0x38);
+			// BSTimer::disableCounter: +0x48 in AE, +0x38 in OG and NG (CommonLibF4 BSTimer::QDisableCounter; AE added
+			// 0x10 bytes before it). V1 read +0x38 on AE, disabledLastTime's low half, which was 0 in every test.
+			const auto disabled = *reinterpret_cast<const std::uint32_t*>(timer.address() + (REX::FModule::IsRuntimeAE() ? 0x48 : 0x38));
 			static REL::Relocation<std::uintptr_t*> ui{ Offsets::UI_Singleton };
 			const auto uiObject = *ui;
 			const std::uint32_t pauseMenus = uiObject ? *reinterpret_cast<const std::uint32_t*>(uiObject + 0x1E0) : 0;
@@ -131,26 +134,33 @@ namespace FO4SMP::FrameHook
 
 	bool Install()
 	{
-		const REL::Relocation<std::uintptr_t> site{ Offsets::MainLoop, Offsets::MainLoop_OnIdleCall };
-		const auto* code = reinterpret_cast<const std::uint8_t*>(site.address());
-		if (code[0] != 0xE8) {
-			logger::error("Frame hook: the main loop's call to Main::OnIdle (+{:07X}) isn't a call (starts {:02X}); not installed",
-				site.address() - REX::FModule::GetExecutingModule().GetBaseAddress(), code[0]);
+		// Main::Run calls Main::OnIdle once per iteration: at +0xBB in OG, +0xCB in AE; NG's isn't known offline (its
+		// code is encrypted on disk). Found by scanning Main::Run's code for the call; if another plugin already
+		// redirected that call, the scan finds nothing and the known offset is used, as V1 did.
+		const auto base = REX::FModule::GetExecutingModule().GetBaseAddress();
+		const auto mainLoop = Offsets::MainLoop.address();
+		const auto onIdle = Offsets::MainOnIdle.address();
+		const auto sites = CodeScan::CallsTo(mainLoop, onIdle);
+		std::uintptr_t site = 0;
+		if (sites.size() == 1) {
+			site = sites.front();
+		} else if (sites.empty()) {
+			const std::ptrdiff_t known = REX::FModule::IsRuntimeOG() ? 0xBB : REX::FModule::IsRuntimeAE() ? 0xCB : 0;
+			if (known != 0 && CodeScan::CallTarget(mainLoop + known) != 0) {
+				site = mainLoop + known;
+				logger::warn("Frame hook: the main loop's call already points at +{:X}, not Main::OnIdle: another plugin hooked it first; FO4SMP calls it in turn",
+					CodeScan::CallTarget(site) - base);
+			}
+		}
+		if (site == 0) {
+			logger::error("Frame hook: found {} call(s) to Main::OnIdle (+{:07X}) in the main loop (+{:07X}, {} code chunk(s)), expected 1; not installed",
+				sites.size(), onIdle - base, mainLoop - base, CodeScan::Chunks(mainLoop).size());
 			return false;
 		}
 
-		std::int32_t rel;
-		std::memcpy(&rel, code + 1, sizeof(rel));
-		const auto current = site.address() + 5 + rel;
-		const auto onIdle = Offsets::MainOnIdle.address();
-		if (current != onIdle) {
-			logger::warn("Frame hook: the main loop's call already points at +{:X}, not Main::OnIdle: another plugin hooked it first; FO4SMP calls it in turn",
-				current - REX::FModule::GetExecutingModule().GetBaseAddress());
-		}
-
-		g_onIdle = reinterpret_cast<OnIdle_t*>(REL::GetTrampoline().write_call<5>(site.address(), &OnIdle_Hook));  // trampoline: F4SE::Init
+		g_onIdle = reinterpret_cast<OnIdle_t*>(REL::GetTrampoline().write_call<5>(site, &OnIdle_Hook));  // trampoline: F4SE::Init
 		g_installed = true;
-		logger::info("Frame hook: installed at the main loop's call to Main::OnIdle (+{:07X})", site.address() - REX::FModule::GetExecutingModule().GetBaseAddress());
+		logger::info("Frame hook: installed at the main loop's call to Main::OnIdle (+{:07X}, main loop +0x{:X})", site - base, site - mainLoop);
 		return true;
 	}
 

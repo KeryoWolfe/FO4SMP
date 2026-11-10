@@ -147,23 +147,37 @@ F4SE_EXPORT constinit auto F4SEPlugin_Version = []() noexcept {
 	data.AuthorName("KeryoWolfe");
 	data.UsesAddressLibrary(true);
 	data.IsLayoutDependent(true);
-	data.CompatibleVersions({ REL::Version(1, 11, 240, 0) });
+	data.CompatibleVersions({ REL::Version(1, 10, 163, 0), REL::Version(1, 10, 984, 0), REL::Version(1, 11, 240, 0) });
 	return data;
 }();
+
+// OG's F4SE (0.6.x, runtime 1.10.163) doesn't read F4SEPlugin_Version; it asks each plugin through F4SEPlugin_Query
+// whether it can load. NG and AE F4SE (0.7.x) read F4SEPlugin_Version and don't call this.
+F4SE_PLUGIN_QUERY(const F4SE::QueryInterface* a_f4se, F4SE::PluginInfo* a_info)
+{
+	a_info->infoVersion = F4SE::PluginInfo::kVersion;
+	a_info->name = Version::PROJECT.data();
+	a_info->version = Version::MAJOR;
+	if (a_f4se->IsEditor()) {
+		return false;
+	}
+	return a_f4se->RuntimeVersion() == REL::Version(1, 10, 163, 0);
+}
 
 F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 {
 	// Logging is FO4SMP's own (InitLog); one trampoline for both hooks (frame: 1 call, attach: 2 calls).
-	F4SE::Init(a_f4se, { .log = false, .trampoline = true, .trampolineSize = 64 });
+	F4SE::Init(a_f4se, { .log = false, .trampoline = true, .trampolineSize = 128 });
 	InitLog();
 
 	const auto runtime = REX::FModule::GetExecutingModule().GetFileVersion();
 	logger::info("{} {} loading on Fallout 4 {}", Version::PROJECT, Version::NAME, runtime.string("."sv));
 
-	if (runtime != REL::Version(1, 11, 240, 0)) {
-		logger::error("Unsupported runtime {}: this build supports 1.11.240 only. Not loading.", runtime.string("."sv));
+	if (runtime != REL::Version(1, 10, 163, 0) && runtime != REL::Version(1, 10, 984, 0) && runtime != REL::Version(1, 11, 240, 0)) {
+		logger::error("Unsupported runtime {}: this build supports 1.10.163 (OG), 1.10.984 (NG) and 1.11.240 (AE). Not loading.", runtime.string("."sv));
 		return false;
 	}
+	logger::info("Runtime: {}, F4SE {}", REX::FModule::IsRuntimeOG() ? "OG"sv : REX::FModule::IsRuntimeNG() ? "NG"sv : "AE"sv, F4SE::GetF4SEVersion().string("."sv));
 
 	g_addresses = FO4SMP::AddressCheck::Run();
 	if (g_addresses.Passed()) {

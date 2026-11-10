@@ -1,5 +1,6 @@
 #include "AttachHook.h"
 
+#include "CodeScan.h"
 #include "Offsets.h"
 #include "game/Fo4NiUtils.h"
 
@@ -9,8 +10,9 @@ namespace FO4SMP::AttachHook
 	{
 		using Attach_t = RE::NiNode*(void* a_biped, RE::NiNode* a_object, RE::NiNode* a_parent, std::uint32_t a_bipedIndex, bool a_firstPerson);
 
-		Attach_t* g_original1 = nullptr;
-		Attach_t* g_original2 = nullptr;
+		// One original per hooked call site (each site's call may already lead somewhere else: another plugin's hook).
+		constexpr std::size_t kMaxSites = 4;
+		std::array<Attach_t*, kMaxSites> g_originals{};
 		bool      g_installed = false;
 		std::unordered_map<std::uint32_t, PhysicsActor> g_actors;  // under g_lock
 		std::unordered_map<std::uint32_t, std::uint32_t> g_seen;    // every actor with a third-person attach: form ID -> handle; under g_lock
@@ -122,49 +124,77 @@ namespace FO4SMP::AttachHook
 			return result;
 		}
 
-		RE::NiNode* Hook1(void* a_biped, RE::NiNode* a_object, RE::NiNode* a_parent, std::uint32_t a_bipedIndex, bool a_firstPerson)
+		template <std::size_t N>
+		RE::NiNode* Hook(void* a_biped, RE::NiNode* a_object, RE::NiNode* a_parent, std::uint32_t a_bipedIndex, bool a_firstPerson)
 		{
-			return OnAttach(g_original1, a_biped, a_object, a_parent, a_bipedIndex, a_firstPerson);
+			return OnAttach(g_originals[N], a_biped, a_object, a_parent, a_bipedIndex, a_firstPerson);
 		}
 
-		RE::NiNode* Hook2(void* a_biped, RE::NiNode* a_object, RE::NiNode* a_parent, std::uint32_t a_bipedIndex, bool a_firstPerson)
-		{
-			return OnAttach(g_original2, a_biped, a_object, a_parent, a_bipedIndex, a_firstPerson);
-		}
-
-		// The call at a_offset in ApplySkinnedObjects: true if it is a `call rel32`; logs where it points.
-		bool CheckSite(std::uintptr_t a_site, const char* a_label)
-		{
-			const auto* code = reinterpret_cast<const std::uint8_t*>(a_site);
-			const auto base = REX::FModule::GetExecutingModule().GetBaseAddress();
-			if (code[0] != 0xE8) {
-				logger::error("Attach hook: {} (+{:07X}) isn't a call (starts {:02X}); not installed", a_label, a_site - base, code[0]);
-				return false;
-			}
-			std::int32_t rel;
-			std::memcpy(&rel, code + 1, sizeof(rel));
-			const auto target = a_site + 5 + rel;
-			if (target != Offsets::BipedAnimAttachSkinnedObject.address()) {
-				logger::warn("Attach hook: {} (+{:07X}) calls +{:X}, not AttachSkinnedObject: another plugin hooked the call; FO4SMP calls it in turn",
-					a_label, a_site - base, target - base);
-			}
-			return true;
-		}
+		constexpr std::array<Attach_t*, kMaxSites> kHooks{ &Hook<0>, &Hook<1>, &Hook<2>, &Hook<3> };
 	}
 
 	bool Install()
 	{
-		const REL::Relocation<std::uintptr_t> site1{ Offsets::BipedAnimApplySkinnedObjects, Offsets::BipedAnimApplySkinnedObjects_AttachCall1 };
-		const REL::Relocation<std::uintptr_t> site2{ Offsets::BipedAnimApplySkinnedObjects, Offsets::BipedAnimApplySkinnedObjects_AttachCall2 };
-		if (!CheckSite(site1.address(), "ApplySkinnedObjects' first attach call") || !CheckSite(site2.address(), "ApplySkinnedObjects' second attach call")) {
+		// The calls to AttachSkinnedObject made while an actor's outfit and body are applied. AE and NG: two, both in
+		// ApplySkinnedObjects (AE +0x192 and +0x1BB). OG: one there (+0x182) and one in the helper it calls for an
+		// object's children (+0x62), which AE inlines. Found by scanning those functions' code for the call; when a
+		// function has none (another plugin already redirected its calls), the known offsets are used, as V1 did.
+		const auto base = REX::FModule::GetExecutingModule().GetBaseAddress();
+		const auto attach = Offsets::BipedAnimAttachSkinnedObject.address();
+		struct Caller
+		{
+			const char*                 name;
+			const REL::ID*              id;
+			std::vector<std::ptrdiff_t> known;  // this runtime's offsets, where known
+		};
+		const bool og = REX::FModule::IsRuntimeOG();
+		const bool ae = REX::FModule::IsRuntimeAE();
+		std::vector<Caller> callers{
+			{ "ApplySkinnedObjects", &Offsets::BipedAnimApplySkinnedObjects, og ? std::vector<std::ptrdiff_t>{ 0x182 } : ae ? std::vector<std::ptrdiff_t>{ 0x192, 0x1BB } : std::vector<std::ptrdiff_t>{} }
+		};
+		if (og) {
+			callers.push_back({ "ApplySkinnedObjects' children helper", &Offsets::BipedAnimApplySkinnedObjectsChildren, { 0x62 } });
+		}
+
+		std::vector<std::pair<std::uintptr_t, std::string>> sites;
+		for (const auto& caller : callers) {
+			const auto function = caller.id->address();
+			auto found = CodeScan::CallsTo(function, attach);
+			if (found.empty()) {
+				for (const auto offset : caller.known) {
+					if (const auto target = CodeScan::CallTarget(function + offset)) {
+						logger::warn("Attach hook: {} +0x{:X} calls +{:X}, not AttachSkinnedObject: another plugin hooked the call; FO4SMP calls it in turn",
+							caller.name, offset, target - base);
+						found.push_back(function + offset);
+					}
+				}
+			}
+			if (found.empty()) {
+				logger::error("Attach hook: no call to AttachSkinnedObject (+{:07X}) found in {} (+{:07X}, {} code chunk(s)); not installed",
+					attach - base, caller.name, function - base, CodeScan::Chunks(function).size());
+				return false;
+			}
+			for (const auto site : found) {
+				sites.emplace_back(site, std::format("{} +0x{:X}", caller.name, site - function));
+			}
+		}
+		constexpr std::size_t expected = 2;  // OG: 1 + 1; NG and AE: 2
+		if (sites.size() > kMaxSites) {
+			logger::error("Attach hook: found {} calls to AttachSkinnedObject, more than the {} this build handles; not installed", sites.size(), kMaxSites);
 			return false;
 		}
+		if (sites.size() != expected) {
+			logger::warn("Attach hook: found {} calls to AttachSkinnedObject, expected {}; hooking all of them", sites.size(), expected);
+		}
+
 		auto& trampoline = REL::GetTrampoline();  // allocated by F4SE::Init (main.cpp)
-		g_original1 = reinterpret_cast<Attach_t*>(trampoline.write_call<5>(site1.address(), &Hook1));
-		g_original2 = reinterpret_cast<Attach_t*>(trampoline.write_call<5>(site2.address(), &Hook2));
+		std::string where;
+		for (std::size_t i = 0; i < sites.size(); ++i) {
+			g_originals[i] = reinterpret_cast<Attach_t*>(trampoline.write_call<5>(sites[i].first, kHooks[i]));
+			where += std::format("{}{} (+{:07X})", i ? ", " : "", sites[i].second, sites[i].first - base);
+		}
 		g_installed = true;
-		const auto base = REX::FModule::GetExecutingModule().GetBaseAddress();
-		logger::info("Attach hook: installed at ApplySkinnedObjects' two calls to AttachSkinnedObject (+{:07X}, +{:07X})", site1.address() - base, site2.address() - base);
+		logger::info("Attach hook: installed at {} call(s) to AttachSkinnedObject: {}", sites.size(), where);
 		return true;
 	}
 

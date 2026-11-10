@@ -2,7 +2,22 @@
 
 FO4SMP, Faster HDT-SMP for Fallout 4. Releases are numbered V1, V2, V3...; a fix after a release adds .1, .2... (V1.1). Dates are when a change was tested in game (`TEST_RESULTS.md`).
 
-## V1 (9 November 2026)
+## V1.1 (not released yet)
+
+Fallout 4 OG and NG. One `FO4SMP.dll` for 1.10.163 (OG), 1.10.984 (NG) and 1.11.240 (AE); it works out which one is
+running.
+
+- **OG (1.10.163) and NG (1.10.984) support.** Every address FO4SMP uses has an ID for each runtime, checked against
+  each executable and Address Library file (`ADDRESSES.md`, "OG and NG"). OG's F4SE (0.6.x) can load the plugin.
+- The address check at load reads the running game's Address Library file and checks OG functions against OG's own
+  first bytes.
+- The frame and armor hooks find their places in the game's code at load instead of using fixed offsets. On AE they
+  find the same three places as V1. OG has one of the two armor calls in a separate function, which is hooked too.
+- Fix: the "timer disabled" part of the pause check read the wrong field of the game timer (always 0 in tests, so
+  nothing changed in practice); it reads the timer's disable count now.
+- Fix (OG): the console report would have used the wrong print function on OG.
+
+
 
 First release. Fallout 4 1.11.240 (Steam) only.
 

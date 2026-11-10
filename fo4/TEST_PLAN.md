@@ -7,6 +7,8 @@ A row passes only on an in-game test of the build being released; a compile or a
 ## Setup
 
 - Fallout 4 1.11.240 (Steam), F4SE for 1.11.240, Address Library with `version-1-11-240-0.bin`.
+- V1.1, also: Fallout 4 1.10.163 (OG) with F4SE 0.6.23 and `version-1-10-163-0.bin`; 1.10.984 (NG) with F4SE 0.7.2 and
+  `version-1-10-984-0.bin`, where available.
 - A separate Mod Organizer 2 profile with a backup of the saves used.
 - FO4 Faster HDT-SMP and any other SMP plugin disabled.
 - Content: A-Body (male) with SMP, TWB SMP, SMP Head, Modular SMP Hairstyles; one SMP outfit; LooksMenu; MCM; 4Stim
@@ -15,14 +17,14 @@ A row passes only on an in-game test of the build being released; a compile or a
 
 ## Matrix
 
-Status column: as of the last build tested (run 45, CommonLibF4 alandtse). **Every row is to be run again on the
-`fo4smp/combined` build** (V1), the build being released.
+Status column: V1 (AE), the released build. **V1.1**: the OG/NG table below, plus rows 4, 5, 7, 10, 12 and 19 again on AE
+(the hooks and the timer read changed).
 
 | # | Area | Steps | Expected (log) | Status |
 |---|---|---|---|---|
 | 1 | Installation | Install the release archive with MO2 into an empty mod; list its files. | `F4SE\Plugins\FO4SMP.dll`, `F4SE\Plugins\FO4SMP\` (configs, schema, docs, licences), `MCM\Config\FO4SMP\`, `Scripts\DynamicHDT.pex` and `.psc`. Nothing else. | Pass (runs 47-56: archive checked, installed in MO2 as `FO4SMP-V1`, played from it) |
 | 2 | Dependency checks | Start with Address Library removed; then with FO4 Faster HDT-SMP enabled too. | "F4SE: plugin FO4SMP.dll ... disabled, address library needs to be updated" in f4se.log: F4SE refuses the plugin before FO4SMP runs; the game starts. With another SMP plugin: "Another SMP plugin is loaded". | Pass (run 48: F4SE refuses FO4SMP without Address Library; run 57: another SMP plugin is reported) |
-| 3 | Runtime check | Start on another runtime (if available). | F4SE refuses the plugin, or "Unsupported runtime ... Not loading." | Not run (no other runtime installed; the plugin declares 1.11.240 only) |
+| 3 | Runtime check | Start on a runtime other than the three (if available). | F4SE refuses the plugin, or "Unsupported runtime ... Not loading." | Not run (no other runtime available) |
 | 4 | Plugin loading | Start the game to the main menu. | "Address check: N OK, M hooked by another plugin, 0 failed", both hooks installed, "FO4SMP loaded", console report. | Pass (runs 1-45) |
 | 5 | Papyrus | Load a save. Call a DynamicHDT function (4Stim scene start). | "DynamicHDT: 7 of 7 script functions bound"; `SwapPhysicsFile` lines; the body rebuilt with the new XML. | Pass (runs 44-45) |
 | 6 | Actor validation | Stand near armor racks with SMP outfits, corpses, NPCs without SMP bodies. | Racks "placed only" (skin bones missing); no build for actors without physics; nothing crashes. | Pass (runs 35-36) |
@@ -40,6 +42,16 @@ Status column: as of the last build tested (run 45, CommonLibF4 alandtse). **Eve
 | 18 | Compatibility | LooksMenu (open it and change hair), 4Stim, other animation mods in the load order. | LooksMenu's detour reported as hooked, not failed; a new hairstyle rebuilds face physics within ~15 s. | Pass (runs 53-54: no crash, the face stays right through the hair list and updates at once after each change) |
 | 19 | Performance | A settlement with 30+ settlers; note fps and "physics step average" with default settings, then with more NPCs. | Default: physics step a few ms. | Pass at the default (run 56: 2.8-3.2 ms a step with 4 NPCs); 13-19 ms at 20, 24-31 ms at 40 |
 | 20 | Packaging | Unpack the archive; compare with the source tree's `package/`; check licences and readme. | Every shipped file accounted for; GPL text, exceptions, schema licence, credits present. | Pass (run 47: 18 files, exactly `package/` plus the DLL and the compiled pex; readme says V1) |
+
+## OG and NG (V1.1)
+
+| # | Runtime | Steps | Expected (log) | Status |
+|---|---|---|---|---|
+| G1 | OG 1.10.163 | Start to the main menu. | "Runtime: OG, F4SE 0.6.23"; "Address check (1.10.163): N OK, ... 0 failed"; "Frame hook: installed ... main loop +0xBB"; "Attach hook: installed at 2 call(s) ... ApplySkinnedObjects +0x182 ..., ApplySkinnedObjects' children helper +0x62"; "DynamicHDT: 7 of 7 script functions bound". | Not run |
+| G2 | OG | Load a save with the A-Body player, an SMP outfit and NPCs; walk; LooksMenu hair change; save/load. | As matrix rows 7-12, 18. | Not run |
+| G3 | OG | Console report, MCM page. | The FO4SMP line in the console; settings apply. | Not run |
+| N1 | NG 1.10.984 | Start to the main menu. | "Runtime: NG, F4SE 0.7.2"; "Address check (1.10.984): ... 0 failed" (lines saying "a function starts there (unwind table)" are passes); both hooks installed with 1 and 2 calls found. | Not run (no NG install yet) |
+| N2 | NG | As G2. | As G2. | Not run |
 
 ## Failure paths
 

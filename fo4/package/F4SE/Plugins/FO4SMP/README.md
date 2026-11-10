@@ -1,4 +1,4 @@
-# FO4SMP V1
+# FO4SMP V1.1
 
 Faster HDT-SMP (FSMP), the Skyrim skinned-mesh physics plugin, ported to Fallout 4. It simulates the physics that
 bodies, outfits, heads and hair describe in an HDT-SMP physics XML: soft bodies, genitals, breasts, hair, cloth.
@@ -10,9 +10,9 @@ exception (LICENSE.txt, EXCEPTIONS.txt).
 
 | | |
 |---|---|
-| Fallout 4 | **1.11.240** (Steam). Other versions: not supported; the plugin refuses to load on them. |
-| F4SE | The build for 1.11.240 (tested: 0.7.9). |
-| Address Library for F4SE Plugins | With `version-1-11-240-0.bin`. Without it F4SE disables FO4SMP ("address library needs to be updated" in f4se.log). |
+| Fallout 4 | **1.10.163** (OG, "old-gen"), **1.10.984** (NG, "next-gen") or **1.11.240** (AE, Anniversary). One DLL for all three; it refuses to load on any other version. |
+| F4SE | The build for your game version: 0.6.23 for 1.10.163, 0.7.2 for 1.10.984, 0.7.9 (tested) for 1.11.240. |
+| Address Library for F4SE Plugins | The file for your game version: `version-1-10-163-0.bin`, `version-1-10-984-0.bin` or `version-1-11-240-0.bin`. Without it F4SE disables FO4SMP (or FO4SMP's log says it couldn't read it). |
 | Mod Configuration Menu | Optional, for the settings page. |
 | Something with SMP physics | A body, outfit, head or hair whose mesh names a physics XML: A-Body (male), True Wasteland Body SMP, SMP Head, Modular SMP Hairstyles... FO4SMP brings no meshes or XMLs of its own. |
 
@@ -71,6 +71,9 @@ other mods swapped through DynamicHDT with "persist" on, and F4SE ignores that d
   first-person physics.
 - Tested on one setup: Fallout 4 1.11.240 (Steam), F4SE, Mod Organizer 2, with LooksMenu, A-Body, TWB SMP, SMP
   Head, Modular SMP Hairstyles and 4Stim. Anything else is untested, not unsupported.
+- OG (1.10.163) and NG (1.10.984): new in V1.1. Every address was checked against those versions' executables and
+  Address Library files, and FO4SMP checks them again when the game starts (its log lists each one). See the
+  changelog for how far each has been tested in game.
 
 ## Reporting a problem
 
