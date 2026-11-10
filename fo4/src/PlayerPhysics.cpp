@@ -353,11 +353,14 @@ namespace FO4SMP::PlayerPhysics
 			face.parts.clear();
 			int newParts = 0, pointed = 0, rebound = 0;
 			std::vector<std::string> problems;
-			std::function<void(RE::NiAVObject*, int)> walk = [&](RE::NiAVObject* a_o, int a_depth) {
+			// Only shapes under the face node (BSFaceGenNiNode) are head parts; the rest (the body's) aren't read, so
+			// this stays cheap enough to run every couple of seconds and, in the face editor, ten times a second.
+			std::function<void(RE::NiAVObject*, int, bool)> walk = [&](RE::NiAVObject* a_o, int a_depth, bool a_inFace) {
 				if (!a_o || a_depth > 40) {
 					return;
 				}
-				if (auto* tri = hdt::castBSTriShape(a_o)) {
+				const bool inFace = a_inFace || hdt::fo4::IsKindOf(a_o, ".?AVBSFaceGenNiNode@@"sv);
+				if (auto* tri = inFace ? hdt::castBSTriShape(a_o) : nullptr) {
 					hdt::fo4::SkinnedShape skinned;
 					std::vector<std::uint32_t> orphans;
 					if (hdt::fo4::ReadSkinnedShape(tri, skinned, false).empty()) {
@@ -470,11 +473,11 @@ namespace FO4SMP::PlayerPhysics
 				}
 				if (auto* n = hdt::castNiNode(a_o)) {
 					for (auto& child : hdt::fo4::Children(n)) {
-						walk(child.get(), a_depth + 1);
+						walk(child.get(), a_depth + 1, inFace);
 					}
 				}
 			};
-			walk(a_root, 0);
+			walk(a_root, 0, false);
 			for (const auto& p : problems) {
 				logger::info("{}: face bones left as they are ({})", Label(), p);
 			}
@@ -1940,7 +1943,7 @@ namespace FO4SMP::PlayerPhysics
 					S().nextCheck = a_now;
 				}
 				// The player's face can be rebuilt in place (LooksMenu, a new hairstyle): look again now and then.
-				S().headCheckAt = S().isPlayer ? a_now + Seconds(15.0) : std::chrono::steady_clock::time_point{};
+				S().headCheckAt = S().isPlayer ? a_now + Seconds(2.0) : std::chrono::steady_clock::time_point{};  // player: a new hairstyle within 2 s
 			}
 			if (a_root) {
 				UpdateFaceNodes(a_root);
@@ -2519,6 +2522,31 @@ namespace FO4SMP::PlayerPhysics
 		if (auto* ui = RE::UI::GetSingleton()) {
 			static const RE::BSFixedString looksMenu{ "LooksMenu" };
 			open = ui->GetMenuOpen(looksMenu);
+		}
+		if (open && g_faceEditing) {
+			// The menu pauses the game, so the frame's work (which points a regenerated face at the actor's own bones)
+			// doesn't run; without this, each new hairstyle showed a broken face until the next periodic check
+			// (up to 15 s, run 53). Ten times a second while the menu is open: look at the faces again and place
+			// their bones.
+			static auto s_next = std::chrono::steady_clock::time_point{};
+			const auto now = std::chrono::steady_clock::now();
+			if (now >= s_next) {
+				s_next = now + std::chrono::milliseconds(100);
+				for (auto& [id, state] : g_actors) {
+					if (!state.root) {
+						continue;
+					}
+					auto* root = state.isPlayer ? PlayerRoot() : AttachHook::Loaded3D(state.handle);
+					if (root != state.root) {
+						continue;  // the 3D changed or went away: left to the frame's work
+					}
+					g_current = &state;
+					BuildFace(root);
+					UpdateFaceNodes(root);
+				}
+				g_current = nullptr;
+			}
+			return;
 		}
 		if (open == g_faceEditing) {
 			return;
