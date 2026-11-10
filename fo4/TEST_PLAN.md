@@ -20,14 +20,14 @@ Status column: as of the last build tested (run 45, CommonLibF4 alandtse). **Eve
 
 | # | Area | Steps | Expected (log) | Status |
 |---|---|---|---|---|
-| 1 | Installation | Install the release archive with MO2 into an empty mod; list its files. | `F4SE\Plugins\FO4SMP.dll`, `F4SE\Plugins\FO4SMP\` (configs, schema, docs, licences), `MCM\Config\FO4SMP\`, `Scripts\DynamicHDT.pex` and `.psc`. Nothing else. | Partial: archive contents checked (run 47); installed in MO2 as `FO4SMP-V1`, F4SE sees version 01000000 (run 48); play from it in runs 49-50 |
+| 1 | Installation | Install the release archive with MO2 into an empty mod; list its files. | `F4SE\Plugins\FO4SMP.dll`, `F4SE\Plugins\FO4SMP\` (configs, schema, docs, licences), `MCM\Config\FO4SMP\`, `Scripts\DynamicHDT.pex` and `.psc`. Nothing else. | Pass (runs 47-56: archive checked, installed in MO2 as `FO4SMP-V1`, played from it) |
 | 2 | Dependency checks | Start with Address Library removed; then with FO4 Faster HDT-SMP enabled too. | "F4SE: plugin FO4SMP.dll ... disabled, address library needs to be updated" in f4se.log: F4SE refuses the plugin before FO4SMP runs; the game starts. With another SMP plugin: "Another SMP plugin is loaded". | Partial: missing Address Library passes (run 48); other SMP plugin not run |
-| 3 | Runtime check | Start on another runtime (if available). | F4SE refuses the plugin, or "Unsupported runtime ... Not loading." | Not run |
+| 3 | Runtime check | Start on another runtime (if available). | F4SE refuses the plugin, or "Unsupported runtime ... Not loading." | Not run (no other runtime installed; the plugin declares 1.11.240 only) |
 | 4 | Plugin loading | Start the game to the main menu. | "Address check: N OK, M hooked by another plugin, 0 failed", both hooks installed, "FO4SMP loaded", console report. | Pass (runs 1-45) |
 | 5 | Papyrus | Load a save. Call a DynamicHDT function (4Stim scene start). | "DynamicHDT: 7 of 7 script functions bound"; `SwapPhysicsFile` lines; the body rebuilt with the new XML. | Pass (runs 44-45) |
 | 6 | Actor validation | Stand near armor racks with SMP outfits, corpses, NPCs without SMP bodies. | Racks "placed only" (skin bones missing); no build for actors without physics; nothing crashes. | Pass (runs 35-36) |
 | 7 | Scene startup | Load a save with the A-Body player and NPCs around. | Player build ~1 s after load, NPC "selected" then built; bodies move with physics. | Pass |
-| 8 | Animation and sync | Walk, run, jump, crouch, turn; NPCs walking; 4Stim scene. | Soft parts lag and settle; no stretching, flying off or vibrating; "farthest simulated bone" under ~110 units. | Partial: penis-vs-legs needs the override |
+| 8 | Animation and sync | Walk, run, jump, crouch, turn; NPCs walking; 4Stim scene. | Soft parts lag and settle; no stretching, flying off or vibrating; "farthest simulated bone" under ~110 units. | Pass with the A-Body penis/legs setting on (its default); off, the penis acts up (run 51) |
 | 9 | Head and hair | Player and an NPC with SMP Head; Cait (or anyone) with an SMP hairstyle. | "face part ... pointed at the actor's own bones", "built"; faces normal, hair moves, nothing follows another actor. | Pass (runs 40, 42) |
 | 10 | Outfit change | Put an SMP outfit on and off the player and an NPC. | "dropped ... (a physics outfit attached)", rebuilt from the new model. | Pass (run 45, player) |
 | 11 | Cancellation / pause | Pause menu, Pip-Boy, a pausing menu, then resume. | "Frame step: paused" / "resumed" lines; no motion while paused. | Pass (run 41) |
