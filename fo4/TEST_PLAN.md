@@ -38,7 +38,7 @@ Status column: as of the last build tested (run 45, CommonLibF4 alandtse). **Eve
 | 16 | BA2 reading | A head part or XML only inside a BA2. | "Game files: read ... (from the game's resource system)". | Pass (run 45) |
 | 17 | Validator | Load with A-Body, TWB, SMP Head, an SMP hairstyle. | "Validator: ... passed" or problems with line numbers, once per file. | Pass (run 45) |
 | 18 | Compatibility | LooksMenu (open it and change hair), 4Stim, other animation mods in the load order. | LooksMenu's detour reported as hooked, not failed; a new hairstyle rebuilds face physics within ~15 s. | Pass (run 53: no crash, face stays right through the hair list); slow face update after each change fixed, retest |
-| 19 | Performance | A settlement with 30+ settlers; note fps and "physics step average" with default settings, then with more NPCs. | Default: physics step a few ms. | Partial: 25 ms per step with 40 simulated NPCs (run 35); culling since |
+| 19 | Performance | A settlement with 30+ settlers; note fps and "physics step average" with default settings, then with more NPCs. | Default: physics step a few ms. | Pass at the default (run 56: 2.8-3.2 ms a step with 4 NPCs); 13-19 ms at 20, 24-31 ms at 40 |
 | 20 | Packaging | Unpack the archive; compare with the source tree's `package/`; check licences and readme. | Every shipped file accounted for; GPL text, exceptions, schema licence, credits present. | Pass (run 47: 18 files, exactly `package/` plus the DLL and the compiled pex; readme says V1) |
 
 ## Failure paths

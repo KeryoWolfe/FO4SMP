@@ -64,8 +64,8 @@ other mods swapped through DynamicHDT with "persist" on, and F4SE ignores that d
 - **A-Body's penis against the legs** can make the penis chain jitter or fly out. FO4SMP works around it by
   default: the settings page's "A-Body: Penis Doesn't Collide With Legs" (on) makes those two collision bodies ignore
   each other; everything else collides as A-Body intends. The cause is still being looked for.
-- **Many NPCs cost frame time**: about 25 ms per physics step with 40 simulated settlers. Lower the NPC count, or
-  leave "Pause Off-Screen NPCs" on.
+- **Many NPCs cost frame time**: about 3 ms per physics step with the default 4 simulated NPCs, 13-19 ms with
+  20 and 24-31 ms with 40 (one test setup). Leave "Pause Off-Screen NPCs" on, and raise the count gradually.
 - An NPC gets face or hair physics only if FO4SMP has seen it attach an outfit or body (nearly all do).
 - Not ported from FSMP: its console commands (`smp ...`), its in-game menu, its NIF checks, wind (off by default),
   first-person physics.
