@@ -32,6 +32,10 @@ namespace FO4SMP
 	void PhysicsWorld::solveConstraints(btContactSolverInfo& a_solverInfo)
 	{
 		++_substeps;
+		_loadSubsteps += 1;
+		_loadManifolds += _stepManifolds;
+		_loadContacts += _stepContacts;
+		_stepManifolds = _stepContacts = 0;
 		if (!m_collisionObjects.size()) {
 			return;
 		}
@@ -45,11 +49,19 @@ namespace FO4SMP
 			}
 		}
 		btDiscreteDynamicsWorldMt::solveConstraints(a_solverInfo);
-		// After solving, so each point's applied impulse is known.
+		// After solving, so each point's applied impulse is known. Run 54: building a name per contact pair every
+		// substep (strings and map inserts) cost real time with crowds of NPCs in contact, so the per-pair record
+		// (contact reports, explosion snapshots) is kept only with the verbose log; otherwise just counted.
 		auto* dispatcher = getCollisionWorld()->getDispatcher();
+		const bool record = logger::Verbose();
 		for (int i = 0; i < dispatcher->getNumManifolds(); ++i) {
 			auto* manifold = dispatcher->getManifoldByIndexInternal(i);
 			if (!manifold->getNumContacts()) {
+				continue;
+			}
+			++_stepManifolds;
+			_stepContacts += manifold->getNumContacts();
+			if (!record) {
 				continue;
 			}
 			auto name = [](const btCollisionObject* a_object) -> std::string {
@@ -77,8 +89,20 @@ namespace FO4SMP
 		static_cast<hdt::CollisionDispatcher*>(m_dispatcher1)->clearAllManifold();
 	}
 
+	std::string PhysicsWorld::TakeLoadReport()
+	{
+		const auto steps = std::max<std::uint64_t>(_loadSubsteps, 1);
+		auto out = std::format("; world: {} system(s), {} collision object(s), {:.0f} contact pair(s) and {:.0f} contact(s) a substep",
+			m_systems.size(), m_collisionObjects.size(), double(_loadManifolds) / steps, double(_loadContacts) / steps);
+		_loadSubsteps = _loadManifolds = _loadContacts = 0;
+		return out;
+	}
+
 	std::string PhysicsWorld::StepContactsInvolving(const std::set<std::string>& a_bones) const
 	{
+		if (!logger::Verbose()) {
+			return " (contacts recorded with the verbose log only)";
+		}
 		std::vector<std::pair<std::string, PairStats>> found;
 		for (const auto& [key, stats] : _stepPairs) {
 			for (const auto& bone : a_bones) {

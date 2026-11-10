@@ -35,8 +35,8 @@ namespace FO4SMP::FrameHook
 				return;
 			}
 			if (g_frames > 0) {
-				logger::info("Frame step: {} frames in {:.1f} s ({:.1f} fps); physics step average {:.3f} ms, longest {:.3f} ms{}",
-					g_frames, span, g_frames / span, g_stepMsTotal / g_frames, g_stepMsMax, hdt::Fo4Bone::TakeWriteReport());
+				logger::info("Frame step: {} frames in {:.1f} s ({:.1f} fps); physics step average {:.3f} ms, longest {:.3f} ms{}{}",
+					g_frames, span, g_frames / span, g_stepMsTotal / g_frames, g_stepMsMax, hdt::Fo4Bone::TakeWriteReport(), PhysicsWorld::Get()->TakeLoadReport());
 				if (const auto resets = PlayerPhysics::TakeSystemResets()) {
 					logger::info("Player physics: simulated bones put back on their rest pose {} time(s) after an explosion", resets);
 				}

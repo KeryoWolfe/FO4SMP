@@ -45,6 +45,8 @@ namespace FO4SMP
 
 		// The last step's contacts whose bone pair names one of a_bones: "pair n (deepest d, impulse i); ...".
 		std::string StepContactsInvolving(const std::set<std::string>& a_bones) const;
+		// "; world: N system(s), ..." since the last call, for the timing line.
+		std::string TakeLoadReport();
 
 	private:
 		PhysicsWorld();
@@ -64,6 +66,9 @@ namespace FO4SMP
 		};
 		std::unordered_map<std::string, PairStats> _pairs;
 		std::unordered_map<std::string, PairStats> _stepPairs;  // the last Step only
+		// Load counters for the timing line (run 54): contact pairs and contacts per substep.
+		std::uint64_t _stepManifolds = 0, _stepContacts = 0;
+		std::uint64_t _loadSubsteps = 0, _loadManifolds = 0, _loadContacts = 0;
 		std::uint64_t _substeps = 0;
 
 		float _timeTick = 1.0f / 60.0f;
