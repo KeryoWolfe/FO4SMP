@@ -34,6 +34,7 @@ namespace hdt::fo4
 		std::uint32_t resolvedFromWorld = 0;  // null bone entries found through the world-transform pointer
 		std::uint32_t unresolved = 0;         // null bone entries left null
 		std::uint64_t vertexDesc = 0;
+		bool dynamicPositions = false;  // positions from a BSDynamicTriShape's own buffer
 	};
 
 	// Fills a_out from a_shape. Returns "" on success, or why the shape can't be read.

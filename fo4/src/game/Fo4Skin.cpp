@@ -227,6 +227,26 @@ namespace hdt::fo4
 			}
 		}
 
+		// Face generation's shapes (BSDynamicTriShape: heads, hair, eyes) keep their positions in a CPU buffer of their own
+		// (F4SE BSGeometry.h: size +0x170, vertices +0x180, GetDynamicVertexSize = (vertexDesc >> 2) & 0x3C), not in
+		// the vertex buffer, which holds only the rest (UVs, normals, skinning). Run 54: reading positions from the vertex
+		// buffer put SMP Head's collision vertices at the actor's feet, where they touched the thighs and pelvis all the
+		// time (thousands of contacts a step, growing with every male NPC).
+		if (IsKindOf(reinterpret_cast<void*>(shape), ".?AVBSDynamicTriShape@@"sv)) {
+			const auto dynamicSize = Read<std::uint32_t>(shape, 0x170);
+			const auto dynamic = Read<std::uintptr_t>(shape, 0x180);
+			const std::uint32_t stride = static_cast<std::uint32_t>((desc >> 2) & 0x3C);
+			if (stride >= 12 && Plausible(dynamic) && dynamicSize >= stride * vertexCount) {
+				for (std::uint32_t v = 0; v < vertexCount; ++v) {
+					const auto base = dynamic + static_cast<std::uintptr_t>(v) * stride;
+					a_out.vertices[v].position = { Read<float>(base, 0), Read<float>(base, 4), Read<float>(base, 8) };
+				}
+				a_out.dynamicPositions = true;
+			} else {
+				return std::format("dynamic shape without readable positions (stride {}, {} bytes for {} vertices)", stride, dynamicSize, vertexCount);
+			}
+		}
+
 		// --- triangles ---
 		if (a_withTriangles) {
 			const auto triangleCount = Read<std::uint32_t>(shape, kTriShapeNumTriangles);
