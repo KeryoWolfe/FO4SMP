@@ -2,7 +2,7 @@
 
 FO4SMP, Faster HDT-SMP for Fallout 4. Releases are numbered V1, V2, V3...; a fix after a release adds .1, .2... (V1.1). Dates are when a change was tested in game (`TEST_RESULTS.md`).
 
-## V1 (not yet released)
+## V1 (9 November 2026)
 
 First release. Fallout 4 1.11.240 (Steam) only.
 
