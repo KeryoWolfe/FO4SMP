@@ -16,6 +16,9 @@ running.
 - Fix: the "timer disabled" part of the pause check read the wrong field of the game timer (always 0 in tests, so
   nothing changed in practice); it reads the timer's disable count now.
 - Fix (OG): the console report would have used the wrong print function on OG.
+- Fix (OG): bodies weren't simulated on most NPCs: OG creates a skeleton's bone nodes only when something asks for
+  them, so FO4SMP didn't find them. It now asks the game for a bone it can't find (tested: 31 NPCs built in Diamond
+  City).
 
 
 
