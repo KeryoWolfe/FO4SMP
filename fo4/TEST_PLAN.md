@@ -18,7 +18,7 @@ A row passes only on an in-game test of the build being released; a compile or a
 ## Matrix
 
 Status column: V1 (AE), the released build. **V1.1**: the OG/NG table below, plus rows 4, 5, 7, 10, 12 and 19 again on AE
-(the hooks and the timer read changed). Row 4 on V1.1: pass (run 64).
+(the hooks and the timer read changed). Rows on V1.1: 4 pass (run 64); 10 and 12 pass (run 65).
 
 | # | Area | Steps | Expected (log) | Status |
 |---|---|---|---|---|
