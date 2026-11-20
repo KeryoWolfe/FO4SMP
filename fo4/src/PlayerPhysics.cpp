@@ -1403,6 +1403,35 @@ namespace FO4SMP::PlayerPhysics
 				if (!S().isPlayer && creator.m_unknownSkinBones > 0) {
 					logger::info("{}: {} skin bone(s) of {}'s shapes aren't in this skeleton (an armor rack?); not simulated, placed only", Label(),
 						creator.m_unknownSkinBones, c.file);
+					// What the skeleton actually holds (OG test, 19 November 2026: A-Body males missing bones that the
+					// skeleton file on disk has).
+					{
+						std::size_t nodes = 0;
+						std::function<void(RE::NiAVObject*)> count = [&](RE::NiAVObject* a_object) {
+							if (!a_object) {
+								return;
+							}
+							++nodes;
+							if (auto* node = hdt::fo4::castNiNode(a_object)) {
+								for (auto& child : hdt::fo4::Children(node)) {
+									count(child.get());
+								}
+							}
+						};
+						count(skeleton);
+						std::string probes;
+						for (const char* name : { "Root", "Pelvis", "SPINE1", "LArm_Finger11", "Pelvis_skin", "LButtFat_skin", "Penis_00", "Penis_01" }) {
+							probes += std::format(" {}={}", name, hdt::fo4::findNode(skeleton, RE::BSFixedString(name)) ? "yes" : "no");
+						}
+						std::string children;
+						for (auto& child : hdt::fo4::Children(skeleton)) {
+							if (child) {
+								children += std::format(" '{}'", child->name.c_str());
+							}
+						}
+						logger::info("{}: skeleton '{}' at {:p}: {} node(s);{}; root's children:{}", Label(), skeleton->name.c_str(),
+							static_cast<const void*>(skeleton), nodes, probes, children);
+					}
 					g_unsimulatable.insert(S().formID);
 					S().simulate = false;
 					S().root = nullptr;
