@@ -1702,8 +1702,9 @@ namespace FO4SMP::PlayerPhysics
 				}
 				g_current = &state;
 				// Diagnostic (run 34): what those bones were touching in the step that blew up, with the solver's impulses.
+				// The first 40, or every one with the verbose log.
 				static int s_explosionsLogged = 0;
-				if (s_explosionsLogged < 40) {
+				if (s_explosionsLogged < 40 || logger::Verbose()) {
 					++s_explosionsLogged;
 					std::string names;
 					for (const auto& n : explodedBones) {

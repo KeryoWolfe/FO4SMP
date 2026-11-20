@@ -155,9 +155,10 @@ namespace hdt
 				++g_rejectedWrites;
 				g_explosion = true;
 				m_exploded = true;
-				// The first 60 rejections are logged (any bone), with the speed the bone had, to see how explosions start.
+				// The first 60 rejections are logged (any bone), with the speed the bone had, to see how explosions start;
+				// with the verbose log, every one.
 				static int s_logged = 0;
-				if (s_logged < 60) {
+				if (s_logged < 60 || logger::Verbose()) {
 					++s_logged;
 					const auto& o = transform.getOrigin();
 					logger::warn("Bone {}: simulated pose {} (at {:.1f}, {:.1f}, {:.1f}, parent '{}' at {:.1f}, {:.1f}, {:.1f}), speed {:.0f} units/s, spin {:.1f} rad/s; not written, reset ({} of 60 logged)",
