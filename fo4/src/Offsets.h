@@ -111,6 +111,15 @@ namespace FO4SMP::Offsets
 	// Resolves BipedAnim::actorRef (+0x1E50); the biped root's userData isn't set yet when outfits attach (run 29).
 	inline constexpr REL::ID LookupREFRByHandle{ 542603, 2190940, 2190940 };  // OG 0x0000AB60, NG 0x0024C240
 
+	// NiAVObject* BSUtilities::GetObjectByName(NiAVObject* root, const BSFixedString& name, bool tryInternal,
+	// bool dontAttach) (CommonLibF4's IDs). When root, or root's first child, is a BSFlattenedBoneTree (an actor's
+	// skeleton: its 'Root'), it calls BSFlattenedBoneTree::GetOrCreateBoneNode(tree, name, &dontAttach), which makes
+	// the NiNode of a bone whose node is deferred; else, with tryInternal, it searches the scene graph (vfunc 0x170).
+	// OG creates a skeleton's bone nodes only as they're asked for (run of 19 November 2026: 157-288 nodes, no
+	// fingers), so a name search alone misses them. Same code in OG (+0x1C93980) and AE (+0x17A0F50): three chunks,
+	// 325 bytes; NG 325 bytes too.
+	inline constexpr REL::ID BSUtilities_GetObjectByName{ 843650, 2274841, 2274841 };
+
 	struct Function
 	{
 		std::string_view              name;
@@ -140,6 +149,7 @@ namespace FO4SMP::Offsets
 		Function{ "FirstThirdPersonSwitchEventSource"sv, REL::ID{ 930195, 2233725, 2233725 }, { 0x48, 0x83, 0xEC, 0x28, 0x8B, 0x05, 0x100, 0x100 }, { 0x48, 0x83, 0xEC, 0x28, 0x65, 0x48, 0x8B, 0x04 }, false },
 		Function{ "LookupREFRByHandle"sv, REL::ID{ 542603, 2190940, 2190940 }, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C }, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C }, true },
 		Function{ "HeapAllocate"sv, REL::ID{ 652767, 2267872, 2267872 }, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C }, { 0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C }, true },
+		Function{ "BSUtilitiesGetObjectByName"sv, REL::ID{ 843650, 2274841, 2274841 }, { 0x48, 0x89, 0x5C, 0x24, 0x18, 0x55, 0x56, 0x57 }, { 0x48, 0x89, 0x5C, 0x24, 0x18, 0x55, 0x56, 0x57 }, true },
 		Function{ "NiNodeCtor"sv, REL::ID{ 20633, 2269948, 2269948 }, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74 }, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x74 }, true },
 		Function{ "ResourceStreamCtor"sv, REL::ID{ 1198116, 2269830, 2269830 }, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C }, { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C }, true },
 		Function{ "ResourceStreamDtor"sv, REL::ID{ 1516202, 2269832, 2269832 }, { 0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B }, { 0x40, 0x53, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B }, true },

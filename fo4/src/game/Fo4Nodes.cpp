@@ -23,6 +23,16 @@ namespace hdt::fo4
 		return node;
 	}
 
+	RE::NiAVObject* GameGetObjectByName(RE::NiAVObject* a_root, const RE::BSFixedString& a_name)
+	{
+		if (!a_root) {
+			return nullptr;
+		}
+		using Get_t = RE::NiAVObject*(RE::NiAVObject* a_root, const RE::BSFixedString& a_name, bool a_tryInternal, bool a_dontAttach);
+		static REL::Relocation<Get_t*> get{ FO4SMP::Offsets::BSUtilities_GetObjectByName };
+		return get(a_root, a_name, true, false);
+	}
+
 	void* GameAllocate(std::size_t a_size)
 	{
 		using Allocate_t = void*(void* a_heap, std::size_t a_size, std::size_t a_alignment, bool a_aligned);

@@ -13,5 +13,10 @@ namespace hdt::fo4
 	// can't be used on 1.11.240: MemoryManager::GetSingleton's ID (2193197) isn't in Address Library 1.11.240, and
 	// CommonLibF4 then silently takes the next ID's address (run 43: a crash at the VM's start).
 	void* GameAllocate(std::size_t a_size);
+
+	// The game's own lookup of a_name under a_root (BSUtilities::GetObjectByName, Offsets.h): for an actor's skeleton
+	// it creates the node of a bone the skeleton has but hasn't made a node for yet (OG makes them on demand), and
+	// attaches it. nullptr if there's no such bone or object.
+	RE::NiAVObject* GameGetObjectByName(RE::NiAVObject* a_root, const RE::BSFixedString& a_name);
 	void GameFree(void* a_memory);
 }

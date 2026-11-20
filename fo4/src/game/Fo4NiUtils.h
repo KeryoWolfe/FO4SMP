@@ -134,9 +134,16 @@ namespace hdt::fo4
 		return nullptr;
 	}
 
+	RE::NiAVObject* GameGetObjectByName(RE::NiAVObject* a_root, const RE::BSFixedString& a_name);  // Fo4Nodes.cpp
+
+	// A node by name; when the scene graph doesn't have it, the game is asked (an actor's skeleton makes the nodes
+	// of its bones on demand in OG: a bone it has may have no node yet).
 	inline RE::NiNode* findNode(RE::NiNode* a_root, const RE::BSFixedString& a_name)
 	{
-		return castNiNode(findObject(a_root, a_name));
+		if (auto* node = castNiNode(findObject(a_root, a_name))) {
+			return node;
+		}
+		return castNiNode(GameGetObjectByName(a_root, a_name));
 	}
 
 	// The value of a_object's NiStringExtraData named a_key, or "".
