@@ -49,7 +49,9 @@ namespace FO4SMP
 			}
 		}
 		btDiscreteDynamicsWorldMt::solveConstraints(a_solverInfo);
-		// After solving, so each point's applied impulse is known. Run 54: building a name per contact pair every
+		// After solving, so each point's applied impulse is known. With split impulse (above), Bullet corrects overlap
+		// with a separate push it doesn't write back, so this is the velocity impulse only: near 0 for a slow overlap
+		// (20 November 2026: a hand resting in a breast showed 0.00 while exploding it every frame). Run 54: building a name per contact pair every
 		// substep (strings and map inserts) cost real time with crowds of NPCs in contact, so the per-pair record
 		// (contact reports, explosion snapshots) is kept only with the verbose log; otherwise just counted.
 		auto* dispatcher = getCollisionWorld()->getDispatcher();
@@ -115,7 +117,7 @@ namespace FO4SMP
 		std::ranges::sort(found, [](const auto& x, const auto& y) { return x.second.maxImpulse > y.second.maxImpulse; });
 		std::string out;
 		for (std::size_t i = 0; i < found.size() && i < 8; ++i) {
-			out += std::format(" {} {} (deepest {:.2f}, impulse {:.2f});", found[i].first, found[i].second.contacts, found[i].second.deepest, found[i].second.maxImpulse);
+			out += std::format(" {} {} (deepest {:.2f}, velocity impulse {:.2f}; overlap push not counted);", found[i].first, found[i].second.contacts, found[i].second.deepest, found[i].second.maxImpulse);
 		}
 		return out.empty() ? std::string{ " none" } : out;
 	}
@@ -134,7 +136,7 @@ namespace FO4SMP
 		}
 		std::string report = std::format("{} contacts in {} substeps; most:", total, _substeps);
 		for (std::size_t i = 0; i < sorted.size() && i < 6; ++i) {
-			report += std::format(" {} {} (deepest {:.1f}, max impulse {:.2f});", sorted[i].first, sorted[i].second.contacts, sorted[i].second.deepest, sorted[i].second.maxImpulse);
+			report += std::format(" {} {} (deepest {:.1f}, max velocity impulse {:.2f});", sorted[i].first, sorted[i].second.contacts, sorted[i].second.deepest, sorted[i].second.maxImpulse);
 		}
 		std::ranges::sort(sorted, [](const auto& a, const auto& b) { return a.second.deepest < b.second.deepest; });
 		report += " deepest:";
