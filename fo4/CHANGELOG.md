@@ -2,7 +2,7 @@
 
 FO4SMP, Faster HDT-SMP for Fallout 4. Releases are numbered V1, V2, V3...; a fix after a release adds .1, .2... (V1.1). Dates are when a change was tested in game (`TEST_RESULTS.md`).
 
-## V1.1 (not released yet)
+## V1.1 (20 November 2026)
 
 Fallout 4 OG and NG. One `FO4SMP.dll` for 1.10.163 (OG), 1.10.984 (NG) and 1.11.240 (AE); it works out which one is
 running.
@@ -13,14 +13,20 @@ running.
   first bytes.
 - The frame and armor hooks find their places in the game's code at load instead of using fixed offsets. On AE they
   find the same three places as V1. OG has one of the two armor calls in a separate function, which is hooked too.
-- Fix: the "timer disabled" part of the pause check read the wrong field of the game timer (always 0 in tests, so
-  nothing changed in practice); it reads the timer's disable count now.
+- Fix: the pause check read the wrong field of the game timer. In some games that field isn't 0, and V1 then
+  treated the game as paused for good after the first load: no physics for anyone (seen in a 4Stim tester's game).
+  It reads the timer's disable count now.
 - Fix (OG): the console report would have used the wrong print function on OG.
 - Fix (OG): bodies weren't simulated on most NPCs: OG creates a skeleton's bone nodes only when something asks for
   them, so FO4SMP didn't find them. It now asks the game for a bone it can't find (tested: 31 NPCs built in Diamond
   City).
+- Verbose log: every explosion and rejected bone pose is logged, not just the first 40 / 60. Contact reports say the
+  impulse shown is the velocity impulse only (the solver's overlap push isn't recorded).
+- Tested in game on OG (1.10.163, GOG, F4SE 0.6.23) and AE (1.11.240, Steam, F4SE 0.7.9): loading, the address
+  check, both hooks, NPC bodies, outfit change, save/reload, LooksMenu. **NG (1.10.984) is untested**: its addresses
+  were checked against its Address Library and executable layout, and FO4SMP re-checks them at load.
 
-
+## V1 (9 November 2026)
 
 First release. Fallout 4 1.11.240 (Steam) only.
 

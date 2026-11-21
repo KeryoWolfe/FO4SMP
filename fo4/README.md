@@ -10,7 +10,7 @@ check) is used from the upstream tree unchanged apart from one compile switch an
 - Addresses and how each was verified: `ADDRESSES.md` (plus `src/Offsets.h`, checked by `src/AddressCheck.cpp` at load).
 - Plan and audit: the claude.ai project doc `FSMP_FO4_PORT.md` and `../FO4_PORT.md`.
 
-## State: V1 released; V1.1 adds OG and NG
+## State: V1.1 ready (OG and AE tested in game; NG untested)
 
 | Milestone | |
 |---|---|

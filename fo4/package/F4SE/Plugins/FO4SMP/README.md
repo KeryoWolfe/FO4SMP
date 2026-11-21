@@ -71,9 +71,12 @@ other mods swapped through DynamicHDT with "persist" on, and F4SE ignores that d
   first-person physics.
 - Tested on one setup: Fallout 4 1.11.240 (Steam), F4SE, Mod Organizer 2, with LooksMenu, A-Body, TWB SMP, SMP
   Head, Modular SMP Hairstyles and 4Stim. Anything else is untested, not unsupported.
-- OG (1.10.163) and NG (1.10.984): new in V1.1. Every address was checked against those versions' executables and
-  Address Library files, and FO4SMP checks them again when the game starts (its log lists each one). See the
-  changelog for how far each has been tested in game.
+- OG (1.10.163) and NG (1.10.984): new in V1.1. OG was tested in game (GOG 1.10.163, F4SE 0.6.23); NG has not been.
+  Every address was checked against those versions' Address Library files, and FO4SMP checks them again when the
+  game starts (its log lists each one).
+- OG on GOG: GOG's installer dates the vanilla archives (`Fallout4 - *.ba2`, `DLC*.ba2`) at install time, so loose
+  mod files older than your install lose to vanilla (with `bInvalidateOlderFiles=1`). If a skeleton or body mod
+  seems ignored, set those archives' dates back (Steam ships them dated 2008).
 
 ## Reporting a problem
 
