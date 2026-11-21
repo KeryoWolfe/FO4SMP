@@ -48,7 +48,7 @@ Status column: V1 (AE), the released build. **V1.1**: the OG/NG table below, plu
 | # | Runtime | Steps | Expected (log) | Status |
 |---|---|---|---|---|
 | G1 | OG 1.10.163 | Start to the main menu. | "Runtime: OG, F4SE 0.6.23"; "Address check (1.10.163): N OK, ... 0 failed"; "Frame hook: installed ... main loop +0xBB"; "Attach hook: installed at 2 call(s) ... ApplySkinnedObjects +0x182 ..., ApplySkinnedObjects' children helper +0x62"; "DynamicHDT: 7 of 7 script functions bound". | Pass (runs 58, 60: 31 OK, 1 hooked, 0 failed; both hooks as expected) |
-| G2 | OG | Load a save with the A-Body player, an SMP outfit and NPCs; walk; LooksMenu hair change; save/load. | As matrix rows 7-12, 18. | Partial (run 60: player and 31 NPCs built and look right in Diamond City after the deferred-bone fix; LooksMenu, outfit change and save/load not yet run on OG) |
+| G2 | OG | Load a save with the A-Body player, an SMP outfit and NPCs; walk; LooksMenu hair change; save/load. | As matrix rows 7-12, 18. | Partial (run 60: player and 31 NPCs built and look right; run 66: LooksMenu open/close and save/load pass, no crash; outfit change not yet seen on OG) |
 | G3 | OG | Console report, MCM page. | The FO4SMP line in the console; settings apply. | Not run |
 | N1 | NG 1.10.984 | Start to the main menu. | "Runtime: NG, F4SE 0.7.2"; "Address check (1.10.984): ... 0 failed" (lines saying "a function starts there (unwind table)" are passes); both hooks installed with 1 and 2 calls found. | Not run (no NG install yet) |
 | N2 | NG | As G2. | As G2. | Not run |
