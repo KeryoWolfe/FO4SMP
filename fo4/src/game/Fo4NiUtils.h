@@ -136,13 +136,12 @@ namespace hdt::fo4
 
 	RE::NiAVObject* GameGetObjectByName(RE::NiAVObject* a_root, const RE::BSFixedString& a_name);  // Fo4Nodes.cpp
 
-	// A node by name; when the scene graph doesn't have it, the game is asked (an actor's skeleton makes the nodes
-	// of its bones on demand in OG: a bone it has may have no node yet).
+	// A node by name, through the game's own lookup: for an actor's skeleton it asks the BSFlattenedBoneTree (a hash
+	// map of every bone, nodes made on demand: OG makes them lazily); for any other root it searches the scene graph
+	// (GetObjectByName with tryInternal). No manual walk first: it only found nodes already made, and slower
+	// (review by asdt123123, 21 November 2026).
 	inline RE::NiNode* findNode(RE::NiNode* a_root, const RE::BSFixedString& a_name)
 	{
-		if (auto* node = castNiNode(findObject(a_root, a_name))) {
-			return node;
-		}
 		return castNiNode(GameGetObjectByName(a_root, a_name));
 	}
 
