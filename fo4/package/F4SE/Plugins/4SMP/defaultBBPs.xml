@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  FO4SMP default physics: a physics XML for meshes that don't name their own
+  4SMP default physics: a physics XML for meshes that don't name their own
   (meshes that do carry a NiStringExtraData "HDT Skinned Mesh Physics Object").
 
   Format, as FSMP's:
@@ -12,7 +12,7 @@
   Only used when nothing on the outfit names its physics with the extra data.
 
   Until the armor attach hook (milestone 4), the extra data on a NIF's root node is lost when the
-  game attaches the outfit to the skeleton, so FO4SMP can't see it: A-Body's male body is mapped
+  game attaches the outfit to the skeleton, so 4SMP can't see it: A-Body's male body is mapped
   here (its MaleBody.nif names this XML). Harmless without A-Body: the shape is never found.
 -->
 <default-bbps>

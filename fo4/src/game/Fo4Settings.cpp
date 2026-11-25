@@ -21,7 +21,7 @@ namespace hdt::fo4
 
 	const std::vector<PatternLibrary>& GetPatternLibraries()
 	{
-		static const std::vector<PatternLibrary> libraries = scanPatternDir(std::filesystem::path{ "Data" } / "F4SE" / "Plugins" / "FO4SMP" / "patterns");
+		static const std::vector<PatternLibrary> libraries = scanPatternDir(std::filesystem::path{ "Data" } / "F4SE" / "Plugins" / "4SMP" / "patterns");
 		return libraries;
 	}
 }

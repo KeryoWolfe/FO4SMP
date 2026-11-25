@@ -18,7 +18,7 @@ namespace FO4SMP::Config
 
 	std::filesystem::path Dir()
 	{
-		return std::filesystem::path{ "Data" } / "F4SE" / "Plugins" / "FO4SMP";
+		return std::filesystem::path{ "Data" } / "F4SE" / "Plugins" / "4SMP";
 	}
 
 	hdt::GlobalConfig Load()

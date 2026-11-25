@@ -103,8 +103,8 @@ namespace FO4SMP::FrameHook
 			std::scoped_lock guard{ PlayerPhysics::Lock() };
 			PlayerPhysics::Update(g_defaults);
 
-			// Diagnostic switch: with F4SE\Plugins\FO4SMP\freeze.txt present, the physics is built but not
-			// stepped, so the body shows the rest pose FO4SMP built it from.
+			// Diagnostic switch: with F4SE\Plugins\4SMP\freeze.txt present, the physics is built but not
+			// stepped, so the body shows the rest pose 4SMP built it from.
 			const double ms = g_frozen ? 0.0 : PhysicsWorld::Get()->Step(frameSeconds);
 			++g_frames;
 			g_stepMsTotal += ms;
@@ -148,7 +148,7 @@ namespace FO4SMP::FrameHook
 			const std::ptrdiff_t known = REX::FModule::IsRuntimeOG() ? 0xBB : REX::FModule::IsRuntimeAE() ? 0xCB : 0;
 			if (known != 0 && CodeScan::CallTarget(mainLoop + known) != 0) {
 				site = mainLoop + known;
-				logger::warn("Frame hook: the main loop's call already points at +{:X}, not Main::OnIdle: another plugin hooked it first; FO4SMP calls it in turn",
+				logger::warn("Frame hook: the main loop's call already points at +{:X}, not Main::OnIdle: another plugin hooked it first; 4SMP calls it in turn",
 					CodeScan::CallTarget(site) - base);
 			}
 		}
@@ -168,11 +168,11 @@ namespace FO4SMP::FrameHook
 	{
 		g_defaults = a_defaults;
 		std::error_code ec;
-		g_frozen = std::filesystem::exists(std::filesystem::path{ "Data" } / "F4SE" / "Plugins" / "FO4SMP" / "freeze.txt", ec);
+		g_frozen = std::filesystem::exists(std::filesystem::path{ "Data" } / "F4SE" / "Plugins" / "4SMP" / "freeze.txt", ec);
 		if (g_frozen) {
 			logger::info("Frame step: freeze.txt found; the physics is built but not stepped (rest pose shown)");
 		}
-		hdt::Fo4Bone::s_worldOnly = std::filesystem::exists(std::filesystem::path{ "Data" } / "F4SE" / "Plugins" / "FO4SMP" / "worldonly.txt", ec);
+		hdt::Fo4Bone::s_worldOnly = std::filesystem::exists(std::filesystem::path{ "Data" } / "F4SE" / "Plugins" / "4SMP" / "worldonly.txt", ec);
 		if (hdt::Fo4Bone::s_worldOnly) {
 			logger::info("Frame step: worldonly.txt found; simulated bones get their world transform only (diagnostic)");
 		}

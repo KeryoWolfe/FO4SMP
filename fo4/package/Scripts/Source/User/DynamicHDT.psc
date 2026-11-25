@@ -1,5 +1,5 @@
 Scriptname DynamicHDT Native Hidden
-{FSMP's DynamicHDT functions, provided by FO4SMP (F4SE\Plugins\FO4SMP.dll). Same signatures as FSMP's, plus
+{FSMP's DynamicHDT functions, provided by 4SMP (F4SE\Plugins\4SMP.dll). Same signatures as FSMP's, plus
 HasPhysicsSystem and IsSoftSuspended from FO4 Faster HDT-SMP. Paths are as the NIF names them (Meshes\...\x.xml).}
 
 ; Use new_physics_file_path instead of the physics XML the ArmorAddon's model names, on this actor.

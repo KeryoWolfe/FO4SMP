@@ -1,6 +1,6 @@
 #pragma once
 
-// Precompiled header for FO4SMP. Besides CommonLibF4, it supplies what FSMP's physics core
+// Precompiled header for 4SMP. Besides CommonLibF4, it supplies what FSMP's physics core
 // (../../src/hdtSkinnedMesh, XmlReader, GlobalConfig) gets from FSMP's own PCH and <Windows.h>
 // without including them itself. fo4/tools/core-check finds that list; keep the two in step.
 
@@ -42,11 +42,11 @@
 using namespace std::literals;
 
 // Logging: spdlog's default logger (set up in main.cpp), with std::format strings, as F4SE::log did in the
-// CommonLibF4 FO4SMP used before (alandtse's); the combined CommonLibF4's own REX::INFO etc. log to the same logger.
+// CommonLibF4 4SMP used before (alandtse's); the combined CommonLibF4's own REX::INFO etc. log to the same logger.
 namespace logger
 {
 	// Release logging (milestone 6): off by default, verbose logging (MCM "Verbose Log", or bVerboseLog in
-	// MCM\Settings\FO4SMP.ini) turns on debug lines and FO4SMP's diagnostics; without it, a warning repeated word for
+	// MCM\Settings\4SMP.ini) turns on debug lines and 4SMP's diagnostics; without it, a warning repeated word for
 	// word (the same XML problem on every NPC built from it) is logged once.
 	inline std::atomic<bool> g_verbose{ false };
 

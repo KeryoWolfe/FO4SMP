@@ -1,9 +1,9 @@
-// Parses FO4SMP's shipped configs.json with FSMP's GlobalConfig and checks a few values.
+// Parses 4SMP's shipped configs.json with FSMP's GlobalConfig and checks a few values.
 #include "GlobalConfig.h"
 #include <doctest/doctest.h>
 #include <fstream>
 #include <sstream>
-TEST_CASE("FO4SMP shipped configs.json parses to its own values")
+TEST_CASE("4SMP shipped configs.json parses to its own values")
 {
 	std::ifstream f(FO4SMP_CONFIGS_JSON);
 	REQUIRE(f.good());
@@ -12,7 +12,7 @@ TEST_CASE("FO4SMP shipped configs.json parses to its own values")
 	CHECK(c.numIterations == 16);
 	CHECK(c.minFps == 60);
 	CHECK(c.maxSubSteps == 4);
-	CHECK(c.windEnabled == true);
+	CHECK(c.windEnabled == false);  // off by default since run 25
 	CHECK(c.distanceForMaxWind == doctest::Approx(2000.0f));
 	CHECK(c.maximumActiveSkeletons == 5);
 	auto layered = hdt::parseConfigJson(R"({"solver":{"numIterations":8}})", c);

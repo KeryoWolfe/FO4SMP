@@ -301,7 +301,7 @@ namespace FO4SMP::Papyrus
 					r = id && PlayerPhysics::HasPhysics(id);
 				}));
 
-			// Bool IsSoftSuspended(Actor actor): FO4SMP keeps NPCs beyond the simulated ones placed (rest shape, no physics).
+			// Bool IsSoftSuspended(Actor actor): 4SMP keeps NPCs beyond the simulated ones placed (rest shape, no physics).
 			bind(new Native("IsSoftSuspended"sv, { { "actor", actor } }, boolean,
 				[](const Native::Args& a, BS::Variable& r) {
 					const auto id = ActorID(a[0]);
@@ -408,8 +408,8 @@ namespace FO4SMP::Papyrus
 
 	bool Install()
 	{
-		// Diagnostic switch: with F4SE\Plugins\FO4SMP\nopapyrus.txt present, the script functions aren't registered.
-		if (std::error_code ec; std::filesystem::exists("Data/F4SE/Plugins/FO4SMP/nopapyrus.txt", ec)) {
+		// Diagnostic switch: with F4SE\Plugins\4SMP\nopapyrus.txt present, the script functions aren't registered.
+		if (std::error_code ec; std::filesystem::exists("Data/F4SE/Plugins/4SMP/nopapyrus.txt", ec)) {
 			logger::warn("DynamicHDT: nopapyrus.txt present; script functions not registered");
 			return false;
 		}

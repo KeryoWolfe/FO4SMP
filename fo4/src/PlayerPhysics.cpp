@@ -208,7 +208,7 @@ namespace FO4SMP::PlayerPhysics
 		// origin) and shared by every actor wearing the part (run 39: anchoring them on one actor dragged every face
 		// toward him). Each actor gets its own copies: for a face shape skinned to such bones, the head part's NIF
 		// (found by the shape's name, which is the head part's editor ID) gives every node not in the skeleton with
-		// its parent and local transform; FO4SMP makes those nodes (outside the scene graph, parented by pointer only)
+		// its parent and local transform; 4SMP makes those nodes (outside the scene graph, parented by pointer only)
 		// and points the actor's skin entries at them. They follow the skeleton every frame unless simulated; the
 		// NIF's "HDT Skinned Mesh Physics Object" names the physics XML (face generation drops it from the shape).
 		struct FacePart
@@ -912,7 +912,7 @@ namespace FO4SMP::PlayerPhysics
 		// Logs each collision body's tags and filters, and which body pairs the filters let collide, so a
 		// contact between bodies the XML keeps apart (e.g. VirtualPenis vs VirtualLegs) shows up as a filter bug.
 		// The run-28 stopgap as a setting: A-Body's VirtualPenis and VirtualLegs collision bodies don't collide with each
-		// other (penis-vs-legs contacts make the penis chain explode in FO4SMP; the cause is still open). Applied to
+		// other (penis-vs-legs contacts make the penis chain explode in 4SMP; the cause is still open). Applied to
 		// every system that has both bodies, after it's built, as the hand-edited override XML did; A-Body's file is
 		// untouched.
 		void ApplyPenisLegsStopgap(hdt::Fo4System* a_system)
@@ -941,7 +941,7 @@ namespace FO4SMP::PlayerPhysics
 					if (!a_body->m_canCollideWithTags.empty()) {
 						a_body->m_canCollideWithTags.erase(tag);
 						if (a_body->m_canCollideWithTags.empty()) {
-							a_body->m_canCollideWithTags.insert(RE::BSFixedString("FO4SMP:none"));  // still a list: nothing
+							a_body->m_canCollideWithTags.insert(RE::BSFixedString("4SMP:none"));  // still a list: nothing
 						}
 					}
 				}
@@ -1446,7 +1446,7 @@ namespace FO4SMP::PlayerPhysics
 				logger::info("{}: {} built in {:.1f} ms: {} bones ({} simulated), {} collision bodies", Label(),
 					c.file, ms, system->getBones().size(), dynamic, system->meshes().size());
 				if (Verbose()) {
-					Console::Print(std::format("FO4SMP: physics on the player from {} ({} bones simulated)", c.file, dynamic));
+					Console::Print(std::format("4SMP: physics on the player from {} ({} bones simulated)", c.file, dynamic));
 				}
 
 				// A body's ground plane (A-Body's and TWB's VirtualGround: a square on the Root bone at the feet, shared
@@ -1775,7 +1775,7 @@ namespace FO4SMP::PlayerPhysics
 			return std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(a_seconds));
 		}
 
-		// Diagnostic (run 33): how far a few skeleton bones move per frame, as FO4SMP reads them. The contacts that
+		// Diagnostic (run 33): how far a few skeleton bones move per frame, as 4SMP reads them. The contacts that
 		// fling the penis and the breasts come from kinematic leg and pelvis bones; if their world transforms are
 		// only refreshed every other frame (or late), their speeds come out 0 and then double, and every contact
 		// with them is a hammer blow. Logs every 10 s: per-frame displacement (units) over the last 24 frames.

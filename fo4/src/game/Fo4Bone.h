@@ -25,8 +25,8 @@ namespace hdt
 		// Set when this bone's simulated pose was rejected (exploded); cleared by whoever resets its actor.
 		bool m_exploded = false;
 
-		// Diagnostic (F4SE\Plugins\FO4SMP\worldonly.txt): write only the world transform, not the local one.
-		// If the physics still shows, the frame is drawn from what FO4SMP writes; if the soft parts go stiff,
+		// Diagnostic (F4SE\Plugins\4SMP\worldonly.txt): write only the world transform, not the local one.
+		// If the physics still shows, the frame is drawn from what 4SMP writes; if the soft parts go stiff,
 		// it is drawn after the engine's next update recomputes world transforms from local ones.
 		static bool s_worldOnly;
 		static constexpr float kMaxDistanceFromParent = 250.0f;  // game units; A-Body's are parented to Root, at the feet; the body is about 128 tall (run 25: bones flung 490 units passed 500)

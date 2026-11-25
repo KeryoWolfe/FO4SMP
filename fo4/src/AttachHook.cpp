@@ -163,7 +163,7 @@ namespace FO4SMP::AttachHook
 			if (found.empty()) {
 				for (const auto offset : caller.known) {
 					if (const auto target = CodeScan::CallTarget(function + offset)) {
-						logger::warn("Attach hook: {} +0x{:X} calls +{:X}, not AttachSkinnedObject: another plugin hooked the call; FO4SMP calls it in turn",
+						logger::warn("Attach hook: {} +0x{:X} calls +{:X}, not AttachSkinnedObject: another plugin hooked the call; 4SMP calls it in turn",
 							caller.name, offset, target - base);
 						found.push_back(function + offset);
 					}

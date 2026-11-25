@@ -1,6 +1,6 @@
 #pragma once
 
-// Fallout 4 addresses, as Address Library IDs for each runtime FO4SMP supports, in commonlib-shared's order:
+// Fallout 4 addresses, as Address Library IDs for each runtime 4SMP supports, in commonlib-shared's order:
 // { OG 1.10.163, NG 1.10.984, AE 1.11.240 }. REL::ID picks the running one (REX::FModule::GetRuntimeIndex).
 //
 // AE: each function was matched between the 1.10.163 and 1.11.240 executables (fo4/ADDRESSES.md); leads came from
@@ -93,7 +93,7 @@ namespace FO4SMP::Offsets
 
 	// Armor attach (milestone 4). BipedAnim::ApplySkinnedObjects calls BipedAnim::AttachSkinnedObject from two
 	// places (1.11.240: +0x35DDB2 and +0x35DDDB, inside a chained chunk of the function); both are `call rel32`.
-	// FO4SMP hooks those calls, not the function: LooksMenu (f4ee.dll) detours the function itself, and a call
+	// 4SMP hooks those calls, not the function: LooksMenu (f4ee.dll) detours the function itself, and a call
 	// site hook calls through whatever is there. Signature from F4SE 1.11.240's GameFormComponents.h (same
 	// address, 0x0035E960): NiNode* AttachSkinnedObject(BipedAnim*, NiNode* objectRoot, NiNode* parent,
 	// UInt32 bipedIndex, bool firstPerson); checked against both call sites (rdx object, r8 parent or null,

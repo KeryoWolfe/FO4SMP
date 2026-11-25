@@ -5,7 +5,7 @@
 
 namespace FO4SMP::Config
 {
-	// Data\F4SE\Plugins\FO4SMP, relative to the game folder (MO2's virtual folder included).
+	// Data\F4SE\Plugins\4SMP, relative to the game folder (MO2's virtual folder included).
 	[[nodiscard]] std::filesystem::path Dir();
 
 	// configs.json (the shipped defaults), then userConfigs.json on top, as FSMP's loadConfig.

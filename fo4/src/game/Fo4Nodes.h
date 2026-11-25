@@ -1,6 +1,6 @@
 #pragma once
 
-// Milestone 5: NiNodes made by FO4SMP, through the game's own allocator and constructor (see Offsets.h), for
+// Milestone 5: NiNodes made by 4SMP, through the game's own allocator and constructor (see Offsets.h), for
 // bones Fallout 4 shares between actors (face generation's head-part bones) that each actor needs its own of.
 
 namespace hdt::fo4

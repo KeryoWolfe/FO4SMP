@@ -1,4 +1,4 @@
-# FO4SMP V1.1
+# 4SMP V1.1
 
 Faster HDT-SMP (FSMP), the Skyrim skinned-mesh physics plugin, ported to Fallout 4. It simulates the physics that
 bodies, outfits, heads and hair describe in an HDT-SMP physics XML: soft bodies, genitals, breasts, hair, cloth.
@@ -12,11 +12,11 @@ exception (LICENSE.txt, EXCEPTIONS.txt).
 |---|---|
 | Fallout 4 | **1.10.163** (OG, "old-gen"), **1.10.984** (NG, "next-gen") or **1.11.240** (AE, Anniversary). One DLL for all three; it refuses to load on any other version. |
 | F4SE | The build for your game version: 0.6.23 for 1.10.163, 0.7.2 for 1.10.984, 0.7.9 (tested) for 1.11.240. |
-| Address Library for F4SE Plugins | The file for your game version: `version-1-10-163-0.bin`, `version-1-10-984-0.bin` or `version-1-11-240-0.bin`. Without it F4SE disables FO4SMP (or FO4SMP's log says it couldn't read it). |
+| Address Library for F4SE Plugins | The file for your game version: `version-1-10-163-0.bin`, `version-1-10-984-0.bin` or `version-1-11-240-0.bin`. Without it F4SE disables 4SMP (or 4SMP's log says it couldn't read it). |
 | Mod Configuration Menu | Optional, for the settings page. |
-| Something with SMP physics | A body, outfit, head or hair whose mesh names a physics XML: A-Body (male), True Wasteland Body SMP, SMP Head, Modular SMP Hairstyles... FO4SMP brings no meshes or XMLs of its own. |
+| Something with SMP physics | A body, outfit, head or hair whose mesh names a physics XML: A-Body (male), True Wasteland Body SMP, SMP Head, Modular SMP Hairstyles... 4SMP brings no meshes or XMLs of its own. |
 
-Run **one** SMP plugin: disable FO4 Faster HDT-SMP (and any other) while FO4SMP is active. FO4SMP writes a warning to
+Run **one** SMP plugin: disable FO4 Faster HDT-SMP (and any other) while 4SMP is active. 4SMP writes a warning to
 its log if it finds another loaded.
 
 ## Install
@@ -24,14 +24,20 @@ its log if it finds another loaded.
 Install the archive with your mod manager like any other mod. There is no plugin file (.esp) and no load order to set.
 Everything goes under `Data`:
 
-- `F4SE\Plugins\FO4SMP.dll`, and `F4SE\Plugins\FO4SMP\` (settings, the XML schema, this readme, licences)
-- `MCM\Config\FO4SMP\` (the settings page)
+- `F4SE\Plugins\4SMP.dll`, and `F4SE\Plugins\4SMP\` (settings, the XML schema, this readme, licences)
+- `MCM\Config\4SMP\` (the settings page)
 - `Scripts\DynamicHDT.pex` and its source (the DynamicHDT script functions other mods can call)
+
+**Upgrading from FO4SMP (V1):** this is the same mod, renamed. Remove the old FO4SMP first (with a mod manager,
+remove or replace that mod; by hand, delete `F4SE\Plugins\FO4SMP.dll`, `F4SE\Plugins\FO4SMP\` and
+`MCM\Config\FO4SMP\`). With both installed, both run: 4SMP's log warns if it finds `FO4SMP.dll` loaded. Your
+MCM settings carry over (4SMP reads `MCM\Settings\FO4SMP.ini` until you change a setting); files you put in
+`F4SE\Plugins\FO4SMP\overrides` or `patterns` need moving to the `4SMP` folder.
 
 ## Uninstall
 
-Remove the mod. Saves made with it load without it; the only thing FO4SMP keeps in a save is the physics files
-other mods swapped through DynamicHDT with "persist" on, and F4SE ignores that data when FO4SMP is gone.
+Remove the mod. Saves made with it load without it; the only thing 4SMP keeps in a save is the physics files
+other mods swapped through DynamicHDT with "persist" on, and F4SE ignores that data when 4SMP is gone.
 
 ## What it does
 
@@ -50,29 +56,29 @@ other mods swapped through DynamicHDT with "persist" on, and F4SE ignores that d
 
 ## Settings
 
-- **MCM page "FO4SMP Physics"**: NPC physics on/off, how many NPCs, how far, pause off-screen NPCs, face and hair
+- **MCM page "4SMP Physics"**: NPC physics on/off, how many NPCs, how far, pause off-screen NPCs, face and hair
   physics, the A-Body penis/legs workaround, verbose log. A value counts once you change it there; until then `configs.json` decides.
-- **`F4SE\Plugins\FO4SMP\configs.json`**: FSMP's settings (solver, wind, `maximumActiveSkeletons`...). Put your own
+- **`F4SE\Plugins\4SMP\configs.json`**: FSMP's settings (solver, wind, `maximumActiveSkeletons`...). Put your own
   changes in `userConfigs.json` beside it (same layout, only the values you change), so updates don't overwrite them.
   Example: `{ "smp": { "maximumActiveSkeletons": 20 } }`.
-- **Overrides**: a file at `F4SE\Plugins\FO4SMP\overrides\<path>` is used instead of `Data\<path>`. For example
+- **Overrides**: a file at `F4SE\Plugins\4SMP\overrides\<path>` is used instead of `Data\<path>`. For example
   `overrides\Meshes\A-Body\body\MaleBody.xml` replaces A-Body's XML without touching A-Body.
 - **`defaultBBPs.xml`**: maps shape names to an XML, for meshes that don't name one.
 
 ## Known limitations
 
-- **A-Body's penis against the legs** can make the penis chain jitter or fly out. FO4SMP works around it by
+- **A-Body's penis against the legs** can make the penis chain jitter or fly out. 4SMP works around it by
   default: the settings page's "A-Body: Penis Doesn't Collide With Legs" (on) makes those two collision bodies ignore
   each other; everything else collides as A-Body intends. The cause is still being looked for.
 - **Many NPCs cost frame time**: about 3 ms per physics step with the default 4 simulated NPCs, 13-19 ms with
   20 and 24-31 ms with 40 (one test setup). Leave "Pause Off-Screen NPCs" on, and raise the count gradually.
-- An NPC gets face or hair physics only if FO4SMP has seen it attach an outfit or body (nearly all do).
+- An NPC gets face or hair physics only if 4SMP has seen it attach an outfit or body (nearly all do).
 - Not ported from FSMP: its console commands (`smp ...`), its in-game menu, its NIF checks, wind (off by default),
   first-person physics.
 - Tested on one setup: Fallout 4 1.11.240 (Steam), F4SE, Mod Organizer 2, with LooksMenu, A-Body, TWB SMP, SMP
   Head, Modular SMP Hairstyles and 4Stim. Anything else is untested, not unsupported.
 - OG (1.10.163) and NG (1.10.984): new in V1.1. OG was tested in game (GOG 1.10.163, F4SE 0.6.23); NG has not been.
-  Every address was checked against those versions' Address Library files, and FO4SMP checks them again when the
+  Every address was checked against those versions' Address Library files, and 4SMP checks them again when the
   game starts (its log lists each one).
 - OG on GOG: GOG's installer dates the vanilla archives (`Fallout4 - *.ba2`, `DLC*.ba2`) at install time, so loose
   mod files older than your install lose to vanilla (with `bInvalidateOlderFiles=1`). If a skeleton or body mod
@@ -81,7 +87,7 @@ other mods swapped through DynamicHDT with "persist" on, and F4SE ignores that d
 ## Reporting a problem
 
 Turn on **Verbose Log** in the settings page, reproduce the problem, and send
-`Documents\My Games\Fallout4\F4SE\FO4SMP.log` (and the crash log if the game crashed).
+`Documents\My Games\Fallout4\F4SE\4SMP.log` (and the crash log if the game crashed).
 
 ## Credits
 

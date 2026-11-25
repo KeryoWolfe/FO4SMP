@@ -4,7 +4,7 @@
 
 // Milestone 5: files packed in BA2 archives (SMP hair NIFs and XMLs), read through the game's own resource system
 // with a BSResourceNiBinaryStream (F4SE 1.11.240 GameStreams.h; addresses in Offsets.h). The game's resource system
-// is only asked once game data is ready (EnableGameFiles), and only from the main thread, where FO4SMP reads files.
+// is only asked once game data is ready (EnableGameFiles), and only from the main thread, where 4SMP reads files.
 
 namespace hdt::fo4
 {

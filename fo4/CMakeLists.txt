@@ -15,6 +15,10 @@ project(
 # log, the console and the archive show. The numeric version above is what F4SE reads: V1 = 1.0.0, V1.1 = 1.1.0, V2 = 2.0.0.
 set(FO4SMP_RELEASE_NAME "V1.1")
 
+# The name players see: 4SMP.dll, 4SMP.log, F4SE\Plugins\4SMP, MCM\Config\4SMP, the archive. FO4SMP (the project, the
+# repository, CMake variables and the C++ namespace) is the internal name; a C++ name can't start with a digit.
+set(FO4SMP_PLUGIN_NAME "4SMP")
+
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
 	message(FATAL_ERROR "FO4SMP is 64-bit only.")
 endif()
@@ -145,6 +149,7 @@ target_link_libraries(
 )
 
 target_precompile_headers("${PROJECT_NAME}" PRIVATE src/PCH.h)
+set_target_properties("${PROJECT_NAME}" PROPERTIES OUTPUT_NAME "${FO4SMP_PLUGIN_NAME}" PDB_NAME "${FO4SMP_PLUGIN_NAME}")
 
 if(MSVC)
 	# AVX2, like FSMP's and FO4 Faster HDT-SMP's main builds (the core has an AVX2 skinning path).
@@ -154,7 +159,7 @@ if(MSVC)
 endif()
 
 # Copy the DLL, its PDB and the shipped config files into a mod folder after each build:
-#   <dir>/F4SE/Plugins/FO4SMP.dll, <dir>/F4SE/Plugins/FO4SMP/configs.json, defaultBBPs.xml
+#   <dir>/F4SE/Plugins/4SMP.dll, <dir>/F4SE/Plugins/4SMP/configs.json, defaultBBPs.xml
 set(FO4SMP_DEPLOY_DIR "" CACHE PATH "Optional mod folder to copy the build into (e.g. an MO2 mod folder).")
 if(FO4SMP_DEPLOY_DIR)
 	add_custom_command(
@@ -202,12 +207,12 @@ if(FO4SMP_FALLOUT4_DIR)
 endif()
 
 # The release archive: `cmake --build --preset release --target release_zip` writes
-# build/release/FO4SMP-<version>.zip, laid out as a mod folder (Data's contents): F4SE\Plugins\FO4SMP.dll and its
-# folder (configs, schema, licences, readme), MCM\Config\FO4SMP, Scripts\DynamicHDT.pex (needs FO4SMP_FALLOUT4_DIR)
+# build/release/4SMP-<version>.zip, laid out as a mod folder (Data's contents): F4SE\Plugins\4SMP.dll and its
+# folder (configs, schema, licences, readme), MCM\Config\4SMP, Scripts\DynamicHDT.pex (needs FO4SMP_FALLOUT4_DIR)
 # and Scripts\Source\User\DynamicHDT.psc. The PDB goes in a separate archive. Source: the GitHub repository (GPL-3).
 set(_stage "${CMAKE_CURRENT_BINARY_DIR}/release-stage")
-set(_zip "${CMAKE_CURRENT_BINARY_DIR}/FO4SMP-${FO4SMP_RELEASE_NAME}.zip")
-set(_pdbzip "${CMAKE_CURRENT_BINARY_DIR}/FO4SMP-${FO4SMP_RELEASE_NAME}-pdb.zip")
+set(_zip "${CMAKE_CURRENT_BINARY_DIR}/${FO4SMP_PLUGIN_NAME}-${FO4SMP_RELEASE_NAME}.zip")
+set(_pdbzip "${CMAKE_CURRENT_BINARY_DIR}/${FO4SMP_PLUGIN_NAME}-${FO4SMP_RELEASE_NAME}-pdb.zip")
 set(_release_commands
 	COMMAND "${CMAKE_COMMAND}" -E rm -rf "${_stage}"
 	COMMAND "${CMAKE_COMMAND}" -E make_directory "${_stage}/mod/F4SE/Plugins" "${_stage}/pdb/F4SE/Plugins"

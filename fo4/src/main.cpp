@@ -1,4 +1,4 @@
-// FO4SMP: Faster HDT-SMP for Fallout 4. GPL-3 with the modding exceptions (see ../../LICENSE, ../../EXCEPTIONS).
+// 4SMP: Faster HDT-SMP for Fallout 4. GPL-3 with the modding exceptions (see ../../LICENSE, ../../EXCEPTIONS).
 //
 // Milestone 1: on 1.11.240 the plugin loads, logs, checks the addresses later milestones hook,
 // links FSMP's physics core and creates its world, reads configs.json and defaultBBPs.xml,
@@ -24,6 +24,7 @@ namespace
 	constexpr std::array kOtherSMP{
 		L"FO4FasterHdtSMP-AVX2.dll"sv,
 		L"FO4FasterHdtSMP.dll"sv,
+		L"FO4SMP.dll"sv,  // this plugin before its rename to 4SMP (V1): an old copy left in F4SE\Plugins
 	};
 
 	FO4SMP::AddressCheck::Result g_addresses{};
@@ -32,7 +33,7 @@ namespace
 
 	void InitLog()
 	{
-		// My Games\Fallout4\F4SE\FO4SMP.log (as F4SE's own logs; the folder name comes from F4SE).
+		// My Games\Fallout4\F4SE\4SMP.log (as F4SE's own logs; the folder name comes from F4SE).
 		wchar_t* documents = nullptr;
 		const auto result = REX::W32::SHGetKnownFolderPath(REX::W32::FOLDERID_Documents, REX::W32::KF_FLAG_DEFAULT, nullptr, &documents);
 		std::unique_ptr<wchar_t[], decltype(&REX::W32::CoTaskMemFree)> owner(documents, REX::W32::CoTaskMemFree);
@@ -58,7 +59,11 @@ namespace
 				for (const wchar_t c : name) {
 					narrow.push_back(static_cast<char>(c));  // the names are ASCII
 				}
-				logger::warn("Another SMP plugin is loaded: {}. Run only one SMP plugin; disable {} or FO4SMP.", narrow, narrow);
+				if (name == L"FO4SMP.dll"sv) {
+					logger::warn("FO4SMP.dll is loaded too: an old copy of this plugin from before its rename to 4SMP. Delete F4SE\\Plugins\\FO4SMP.dll and its FO4SMP folder.");
+				} else {
+					logger::warn("Another SMP plugin is loaded: {}. Run only one SMP plugin; disable {} or 4SMP.", narrow, narrow);
+				}
 			}
 		}
 	}
@@ -99,9 +104,9 @@ namespace
 			Version::PROJECT, Version::NAME,
 			g_addresses.Passed() ?
 				(g_addresses.hooked ? std::format("addresses OK ({} hooked by another plugin)", g_addresses.hooked) : "addresses OK"s) :
-				"ADDRESS CHECK FAILED (see FO4SMP.log)"s,
-			g_worldOK ? "running" : "FAILED (see FO4SMP.log)",
-			FO4SMP::FrameHook::Installed() ? "hooked" : "NOT HOOKED (see FO4SMP.log)");
+				"ADDRESS CHECK FAILED (see 4SMP.log)"s,
+			g_worldOK ? "running" : "FAILED (see 4SMP.log)",
+			FO4SMP::FrameHook::Installed() ? "hooked" : "NOT HOOKED (see 4SMP.log)");
 		if (FO4SMP::Console::Print(line)) {
 			g_reportedInConsole = true;
 			logger::info("Console: printed \"{}\"", line);
@@ -166,7 +171,7 @@ F4SE_PLUGIN_QUERY(const F4SE::QueryInterface* a_f4se, F4SE::PluginInfo* a_info)
 
 F4SE_PLUGIN_LOAD(const F4SE::LoadInterface* a_f4se)
 {
-	// Logging is FO4SMP's own (InitLog); one trampoline for both hooks (frame: 1 call, attach: 2 calls).
+	// Logging is 4SMP's own (InitLog); one trampoline for both hooks (frame: 1 call, attach: 2 calls).
 	F4SE::Init(a_f4se, { .log = false, .trampoline = true, .trampolineSize = 128 });
 	InitLog();
 

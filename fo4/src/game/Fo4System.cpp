@@ -346,13 +346,13 @@ namespace hdt
 			return nullptr;
 		}
 
-		// Fallout 4: a user override of a physics XML: the same relative path under F4SE\Plugins\FO4SMP\overrides
+		// Fallout 4: a user override of a physics XML: the same relative path under F4SE\Plugins\4SMP\overrides
 		// wins over the original (e.g. overrides\Meshes\A-Body\body\MaleBody.xml). Nothing ships there, so a
 		// build or update never replaces it, and the original mod's file stays untouched.
 		std::string loaded;
 		std::string readFrom = path.c_str();
 		if (std::filesystem::path{ path.c_str() }.is_relative()) {
-			const std::string overridePath = std::string{ "F4SE\\Plugins\\FO4SMP\\overrides\\" } + path.c_str();
+			const std::string overridePath = std::string{ "F4SE\\Plugins\\4SMP\\overrides\\" } + path.c_str();
 			loaded = readAllFile(overridePath.c_str());
 			if (!loaded.empty()) {
 				logger::info("Physics XML {}: using the override {}", path.c_str(), overridePath);

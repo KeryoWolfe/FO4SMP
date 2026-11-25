@@ -1,4 +1,4 @@
-# FO4SMP's vcpkg triplet: static dependencies, dynamic CRT, AVX2 (as FSMP's), built with whatever MSVC
+# 4SMP's vcpkg triplet: static dependencies, dynamic CRT, AVX2 (as FSMP's), built with whatever MSVC
 # toolset the build prompt uses.
 #
 # FSMP's own triplets (../../cmake/triplets) also pin the dependency compiler to MSVC 14.44, so that

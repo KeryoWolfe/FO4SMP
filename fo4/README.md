@@ -1,11 +1,14 @@
-# FO4SMP (developer notes)
+# 4SMP (developer notes)
+
+Players see the name **4SMP** (DLL, log, folders, MCM page, archive); the repository, CMake project and variables
+(`FO4SMP_*`) and the C++ namespace keep FO4SMP (C++ names can't start with a digit).
 
 Faster HDT-SMP (FSMP) ported to Fallout 4 with F4SE and Address Library: one DLL for 1.10.163 (OG), 1.10.984 (NG) and
 1.11.240 (AE). This folder holds the
 Fallout 4 build; FSMP's physics core (`../src/hdtSkinnedMesh`, XML reader, configs, patterns, the validator's XSD
 check) is used from the upstream tree unchanged apart from one compile switch and the schema path.
 
-- Player documentation (shipped in the archive): `package/F4SE/Plugins/FO4SMP/README.md`, `CREDITS.md`.
+- Player documentation (shipped in the archive): `package/F4SE/Plugins/4SMP/README.md`, `CREDITS.md`.
 - Changes: `CHANGELOG.md`. Tests: `TEST_PLAN.md` (what to run) and `TEST_RESULTS.md` (every run, with log evidence).
 - Addresses and how each was verified: `ADDRESSES.md` (plus `src/Offsets.h`, checked by `src/AddressCheck.cpp` at load).
 - Plan and audit: the claude.ai project doc `FSMP_FO4_PORT.md` and `../FO4_PORT.md`.
@@ -55,8 +58,8 @@ cmake --build --preset release
 - `FO4SMP_DEPLOY_DIR` (optional): each build copies the DLL, PDB and `package/` there.
 - `FO4SMP_FALLOUT4_DIR` (optional): the game folder with the Creation Kit's `Papyrus Compiler` and
   `Data\Scripts\Source` (with `Base`); compiles `DynamicHDT.pex`, copied into the deploy folder's `Scripts`.
-- Release archive: `cmake --build --preset release --target release_zip` writes `build/release/FO4SMP-V<n>.zip`
-  (mod folder layout) and `FO4SMP-V<n>-pdb.zip`. Releases are V1, V2...; a fix after a release adds .1 (V1.1): set `FO4SMP_RELEASE_NAME` and the numeric `VERSION` (1.1.0) in `CMakeLists.txt`.
+- Release archive: `cmake --build --preset release --target release_zip` writes `build/release/4SMP-V<n>.zip`
+  (mod folder layout) and `4SMP-V<n>-pdb.zip`. Releases are V1, V2...; a fix after a release adds .1 (V1.1): set `FO4SMP_RELEASE_NAME` and the numeric `VERSION` (1.1.0) in `CMakeLists.txt`.
 
 The first configure builds FSMP's patched Bullet, oneTBB and spdlog (with `wchar`) through vcpkg.
 
@@ -70,7 +73,7 @@ The first configure builds FSMP's patched Bullet, oneTBB and spdlog (with `wchar
 
 ## Logging
 
-`Documents\My Games\Fallout4\F4SE\FO4SMP.log`. By default: startup, builds, drops, selections, problems (a warning
+`Documents\My Games\Fallout4\F4SE\4SMP.log`. By default: startup, builds, drops, selections, problems (a warning
 repeated word for word is logged once), a timing line a minute. The MCM switch "Verbose Log" (`bVerboseLog` in
-`MCM\Settings\FO4SMP.ini`) adds debug lines (every bone and constraint built) and the diagnostics from milestones
+`MCM\Settings\4SMP.ini`) adds debug lines (every bone and constraint built) and the diagnostics from milestones
 3-5 (geometry dumps, motion tracking, the player's bounds watch, every attach).

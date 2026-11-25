@@ -3,7 +3,7 @@
   "configurePresets": [
     {
       "name": "release",
-      "displayName": "FO4SMP Release (MSVC, vcpkg)",
+      "displayName": "4SMP Release (MSVC, vcpkg)",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {

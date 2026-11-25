@@ -30,6 +30,6 @@ namespace hdt::fo4
 	const Settings& GetSettings();
 	void ApplySettings(const GlobalConfig& a_config);
 
-	// <pattern> libraries shared by every physics XML: Data/F4SE/Plugins/FO4SMP/patterns/*.xml, read once.
+	// <pattern> libraries shared by every physics XML: Data/F4SE/Plugins/4SMP/patterns/*.xml, read once.
 	const std::vector<PatternLibrary>& GetPatternLibraries();
 }

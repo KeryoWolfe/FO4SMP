@@ -1,8 +1,12 @@
 # Changelog
 
-FO4SMP, Faster HDT-SMP for Fallout 4. Releases are numbered V1, V2, V3...; a fix after a release adds .1, .2... (V1.1). Dates are when a change was tested in game (`TEST_RESULTS.md`).
+4SMP (called FO4SMP until V1.1), Faster HDT-SMP for Fallout 4. Releases are numbered V1, V2, V3...; a fix after a release adds .1, .2... (V1.1). Dates are when a change was tested in game (`TEST_RESULTS.md`).
 
 ## V1.1 (20 November 2026)
+
+- **Renamed to 4SMP** (25 November 2026): `4SMP.dll`, `4SMP.log`, `F4SE\Plugins\4SMP\`, MCM page "4SMP Physics".
+  MCM settings saved by FO4SMP are read until a setting is changed; the log warns if an old `FO4SMP.dll` is still
+  loaded. The source repository keeps its name.
 
 Fallout 4 OG and NG. One `FO4SMP.dll` for 1.10.163 (OG), 1.10.984 (NG) and 1.11.240 (AE); it works out which one is
 running.

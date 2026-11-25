@@ -182,7 +182,7 @@ namespace hdt
 		world.rotate = convertBt(transform.getBasis());
 		world.translate = convertBt(transform.getOrigin());
 
-		// Fallout 4: FO4SMP steps after the game's frame (Main::OnIdle), so the engine's next update
+		// Fallout 4: 4SMP steps after the game's frame (Main::OnIdle), so the engine's next update
 		// recomputes world transforms from local ones before anything is drawn; a world transform written
 		// here alone would be lost. Write the local transform that gives this world transform under the
 		// current parent, so the pose survives that update (one frame behind the parent's own motion).

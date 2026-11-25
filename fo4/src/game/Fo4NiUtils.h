@@ -176,7 +176,7 @@ namespace hdt::fo4
 		}
 		std::ifstream stream(path, std::ios::binary);
 		if (!stream) {
-			// FO4SMP's own files (F4SE\Plugins\FO4SMP\overrides...) are loose only.
+			// 4SMP's own files (F4SE\Plugins\4SMP\overrides...) are loose only.
 			const std::string_view sv{ a_path };
 			const bool own = sv.size() >= 4 && _strnicmp(a_path, "F4SE", 4) == 0;
 			return relative && !own ? ReadGameFile(a_path) : std::string{};
@@ -279,7 +279,7 @@ namespace hdt::fo4
 	// *_SMP bones) aren't the ones the engine uses; recomputing world transforms from them appears to be
 	// what put those bones at the Root bone (milestone 3, run 7), so the physics was built and reset from
 	// wrong poses.
-	// FO4SMP runs after the game's frame update, so the world transforms it reads are already current.
+	// 4SMP runs after the game's frame update, so the world transforms it reads are already current.
 	inline void updateTransformUpDown(RE::NiAVObject* /*a_object*/, bool /*a_dirty*/)
 	{
 	}

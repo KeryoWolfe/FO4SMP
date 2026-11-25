@@ -19,7 +19,7 @@ namespace FO4SMP::Validation
 			if (result.schemaSkipped) {
 				static bool s_said = false;
 				if (!std::exchange(s_said, true)) {
-					logger::warn("Validator: no schema (F4SE\\Plugins\\FO4SMP\\hdtSMP64.xsd); physics XMLs aren't checked");
+					logger::warn("Validator: no schema (F4SE\\Plugins\\4SMP\\hdtSMP64.xsd); physics XMLs aren't checked");
 				}
 				return;
 			}

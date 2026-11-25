@@ -6,7 +6,9 @@ namespace FO4SMP::Settings
 {
 	namespace
 	{
-		constexpr auto kPath = "Data/MCM/Settings/FO4SMP.ini";
+		constexpr auto kPath = "Data/MCM/Settings/4SMP.ini";
+		// Before the rename to 4SMP (V1, and V1.1 builds before it) MCM saved here; read until MCM writes kPath.
+		constexpr auto kOldPath = "Data/MCM/Settings/FO4SMP.ini";
 
 		std::string Trim(std::string_view a_s)
 		{
@@ -105,21 +107,27 @@ namespace FO4SMP::Settings
 			return;
 		}
 		s_next = now + std::chrono::seconds(2);
+		static std::filesystem::path s_seenPath{};
 		std::error_code error;
-		const std::filesystem::path path{ kPath };
+		std::filesystem::path path{ kPath };
+		if (!std::filesystem::exists(path, error) && std::filesystem::exists(kOldPath, error)) {
+			path = kOldPath;
+		}
+		error.clear();
 		const auto time = std::filesystem::last_write_time(path, error);
 		if (error) {
 			if (s_had) {
-				logger::info("Settings: {} is gone; the values set stay until the game restarts", kPath);
+				logger::info("Settings: {} is gone; the values set stay until the game restarts", s_seenPath.string());
 				s_had = false;
 			}
 			return;
 		}
-		if (s_had && time == s_seen) {
+		if (s_had && time == s_seen && path == s_seenPath) {
 			return;
 		}
 		s_had = true;
 		s_seen = time;
+		s_seenPath = path;
 		Load(path);
 	}
 }

@@ -1,7 +1,7 @@
 #pragma once
 
-// Fallout 4 stand-in for FSMP's src/NetImmerseUtils.h (Skyrim's NetImmerse helpers), found first on FO4SMP's include
-// path. FSMP's validator only needs readAllFile2 from it; here that reads like the rest of FO4SMP: a loose file
+// Fallout 4 stand-in for FSMP's src/NetImmerseUtils.h (Skyrim's NetImmerse helpers), found first on 4SMP's include
+// path. FSMP's validator only needs readAllFile2 from it; here that reads like the rest of 4SMP: a loose file
 // relative to Data, else the game's archives.
 
 #include "game/Fo4NiUtils.h"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Syntax-checks FSMP's physics core with stand-ins for what FO4SMP's PCH supplies (fo4pch_shim.h,
+# Syntax-checks FSMP's physics core with stand-ins for what 4SMP's PCH supplies (fo4pch_shim.h,
 # make_smart_shim.h, RE_shim.h), to catch a name the PCH is missing. Errors from MSVC-only SIMD
 # code (__m128 members and operators, which clang can't compile) are filtered out; anything left is real.
 # usage: check-core-names.sh <bullet3 source dir with FSMP's patches applied>
